@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- ==================== CACHE MIGRATION PERFORMANCE INDEXES ==================== -->
+    <!-- These indexes optimize queries that are currently cached to maintain performance after cache removal -->
+
+    <!-- Product List Optimization - Most frequently cached queries -->
+    <changeSet id="cache-migration-001" author="cache-migration">
+        <comment>Composite index for active product lists ordered by update time (replaces sanPhamList cache)</comment>
+        <createIndex indexName="idx_san_pham_active_updated" tableName="san_pham">
+            <column name="trang_thai"/>
+            <column name="ngay_cap_nhat" descending="true"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="cache-migration-002" author="cache-migration">
+        <comment>Composite index for product category and price filtering (replaces category-based caching)</comment>
+        <createIndex indexName="idx_san_pham_category_price" tableName="san_pham_danh_muc">
+            <column name="danh_muc_id"/>
+        </createIndex>
+        <createIndex indexName="idx_san_pham_chi_tiet_price_active" tableName="san_pham_chi_tiet">
+            <column name="gia_ban"/>
+            <column name="trang_thai"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- Full-text Search Optimization - Replaces searchResults cache -->
+    <changeSet id="cache-migration-003" author="cache-migration">
+        <comment>Full-text search index for product names and descriptions (replaces searchResults cache)</comment>
+        <sql>
+            CREATE INDEX idx_san_pham_search_text ON san_pham
+            USING gin(to_tsvector('simple', COALESCE(ten_san_pham, '') || ' ' || COALESCE(mo_ta, '')));
+        </sql>
+        <rollback>
+            DROP INDEX IF EXISTS idx_san_pham_search_text;
+        </rollback>
+    </changeSet>
+
+    <changeSet id="cache-migration-004" author="cache-migration">
+        <comment>Product code search optimization</comment>
+        <createIndex indexName="idx_san_pham_ma_search" tableName="san_pham">
+            <column name="ma_san_pham"/>
+            <column name="trang_thai"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- Cart Data Optimization - Replaces cartData cache -->
+    <changeSet id="cache-migration-005" author="cache-migration">
+        <comment>User-based cart queries optimization (replaces cartData cache)</comment>
+        <createIndex indexName="idx_gio_hang_user_updated" tableName="gio_hang">
+            <column name="nguoi_dung_id"/>
+            <column name="ngay_cap_nhat" descending="true"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="cache-migration-006" author="cache-migration">
+        <comment>Cart item queries with price tracking</comment>
+        <createIndex indexName="idx_gio_hang_chi_tiet_price_tracking" tableName="gio_hang_chi_tiet">
+            <column name="gio_hang_id"/>
+            <column name="gia_tai_thoi_diem_them"/>
+            <column name="ngay_tao" descending="true"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- Product Ratings Optimization - Replaces productRatings cache -->
+    <changeSet id="cache-migration-007" author="cache-migration">
+        <comment>Product ratings aggregation optimization (replaces productRatings cache)</comment>
+        <createIndex indexName="idx_danh_gia_product_rating" tableName="danh_gia">
+            <column name="san_pham_id"/>
+            <column name="diem_danh_gia"/>
+            <column name="trang_thai"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- User Session Optimization - Replaces userSessions cache -->
+    <changeSet id="cache-migration-008" author="cache-migration">
+        <comment>User session and profile queries (replaces userSessions cache)</comment>
+        <createIndex indexName="idx_nguoi_dung_session_lookup" tableName="nguoi_dung">
+            <column name="email"/>
+            <column name="trang_thai"/>
+            <column name="ngay_cap_nhat" descending="true"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- Popular Products Optimization - Replaces popularProducts cache -->
+    <changeSet id="cache-migration-009" author="cache-migration">
+        <comment>Popular products based on cart and order data (replaces popularProducts cache)</comment>
+        <createIndex indexName="idx_hoa_don_chi_tiet_popularity" tableName="hoa_don_chi_tiet">
+            <column name="san_pham_chi_tiet_id"/>
+            <column name="so_luong"/>
+            <column name="ngay_tao" descending="true"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- Shipping Fee Optimization - Replaces shippingFees cache -->
+    <changeSet id="cache-migration-010" author="cache-migration">
+        <comment>Address-based shipping calculations (replaces shippingFees cache)</comment>
+        <createIndex indexName="idx_dia_chi_shipping_lookup" tableName="dia_chi">
+            <column name="tinh_thanh"/>
+            <column name="quan_huyen"/>
+            <column name="phuong_xa"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- Order Management Optimization -->
+    <changeSet id="cache-migration-011" author="cache-migration">
+        <comment>Order status and date range queries optimization</comment>
+        <createIndex indexName="idx_hoa_don_status_date" tableName="hoa_don">
+            <column name="trang_thai_don_hang"/>
+            <column name="ngay_tao" descending="true"/>
+            <column name="khach_hang_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- Voucher and Campaign Optimization -->
+    <changeSet id="cache-migration-012" author="cache-migration">
+        <comment>Voucher status and date range optimization</comment>
+        <createIndex indexName="idx_phieu_giam_gia_status_dates" tableName="phieu_giam_gia">
+            <column name="trang_thai"/>
+            <column name="ngay_bat_dau"/>
+            <column name="ngay_ket_thuc"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="cache-migration-013" author="cache-migration">
+        <comment>Campaign status and date range optimization</comment>
+        <createIndex indexName="idx_dot_giam_gia_status_dates" tableName="dot_giam_gia">
+            <column name="trang_thai"/>
+            <column name="ngay_bat_dau"/>
+            <column name="ngay_ket_thuc"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- Serial Number and Inventory Optimization -->
+    <changeSet id="cache-migration-014" author="cache-migration">
+        <comment>Serial number status and product variant optimization</comment>
+        <createIndex indexName="idx_serial_number_status_variant" tableName="serial_number">
+            <column name="san_pham_chi_tiet_id"/>
+            <column name="trang_thai"/>
+            <column name="ngay_tao" descending="true"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- Brand and Category Optimization - Replaces categories cache -->
+    <changeSet id="cache-migration-015" author="cache-migration">
+        <comment>Brand-based product filtering (replaces brand caching)</comment>
+        <createIndex indexName="idx_san_pham_brand_active" tableName="san_pham">
+            <column name="thuong_hieu_id"/>
+            <column name="trang_thai"/>
+            <column name="ngay_cap_nhat" descending="true"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

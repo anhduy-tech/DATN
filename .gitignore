@@ -1,0 +1,72 @@
+HELP.md
+.venv/
+
+# General
+*.log
+*.tmp
+*.swp
+
+# Maven
+target/
+
+# Gradle
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Environment files (keep .env but ignore actual .env files)
+.env
+.env.local
+.env.*.local
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+
+# Sensitive configuration files
+application-local.properties
+application-*.properties
+!application.properties
+
+# Documentation folder (using Shrimp task manager instead)
+docs/
+
+#pycache
+**/src/main/**/__pycache__/
+**/src/test/**/__pycache__/

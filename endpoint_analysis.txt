@@ -1,0 +1,150 @@
+# Phân Tích Endpoint Giữa 2 Project Spring Boot (Cập nhật lần 2)
+
+## I. Endpoints trong `lapxpert-backend-2/src/main/java` (Project Chính)
+
+(Không thay đổi, giữ nguyên như phân tích trước)
+
+### Quản lý Người dùng & Xác thực
+- `POST /api/auth/login`
+- `POST /api/auth/validate-token`
+- `GET /api/v1/user/customer`
+- `GET /api/v1/user/staff`
+- `POST /api/v1/user/customer`
+- `POST /api/v1/user/staff`
+- `PUT /api/v1/user/customer/{id}`
+- `PUT /api/v1/user/staff/{id}`
+- `DELETE /api/v1/user/customer/{id}`
+- `DELETE /api/v1/user/staff/{id}`
+
+### Quản lý Sản phẩm & Thuộc tính
+- `GET /api/v1/products`, `/api/v2/products`
+- `GET /api/v1/products/{id}`
+- `POST /api/v1/products/add`
+- `PUT /api/v1/products/update/{id}`
+- `DELETE /api/v1/products/delete/{id}`
+- `POST /api/v1/products/search`
+- `GET /api/v1/products-details/list`
+- `GET /api/v1/products/attributes/cpu`, `ram`, `gpu`, `colors`, `storage`, `screen`, `category`, `brand` (Full CRUD)
+
+### Quản lý Kho & Serial Number
+- `GET /api/v1/inventory/stats`
+- `GET /api/v1/serial-numbers`
+- `POST /api/v1/serial-numbers/reserve`
+- `POST /api/v1/serial-numbers/confirm-sale`
+
+### Quản lý Giỏ hàng
+- `GET /api/v1/cart`
+- `POST /api/v1/cart/add`
+- `PUT /api/v1/cart/update-quantity`
+- `DELETE /api/v1/cart/remove/{sanPhamChiTietId}`
+- `DELETE /api/v1/cart/clear`
+- `POST /api/v1/cart/reservations/reserve`
+- `DELETE /api/v1/cart/reservations/release/{tabId}`
+
+### Quản lý Đơn hàng & Hóa đơn
+- `GET /api/v1/hoa-don`
+- `POST /api/v1/hoa-don`
+- `GET /api/v1/hoa-don/{id}`
+- `PUT /api/v1/hoa-don/{id}`
+- `POST /api/v1/hoa-don/{orderId}/cancel`
+
+### Quản lý Giảm giá (Discounts & Vouchers)
+- `GET /api/v1/discounts`
+- `POST /api/v1/discounts/toggle/{id}`
+- `GET api/v1/phieu-giam-gia`
+- `POST api/v1/phieu-giam-gia`
+- `POST /api/v1/phieu-giam-gia/validate`
+- `POST /api/v1/phieu-giam-gia/apply`
+
+### Thanh toán
+- `POST /api/payment/create-order`
+- `GET /api/payment/vnpay-payment`
+- `GET /api/payment/momo-payment`
+- `POST /api/v1/hoa-don/{orderId}/vnpay-payment`
+- `POST /api/v1/hoa-don/{orderId}/momo-payment`
+
+### Chức năng khác
+- `POST /api/ai-chat/chat`
+- `GET /api/v1/thong-ke/dashboard`
+- `POST /api/v1/shipping/calculate`
+- `POST /api/v1/storage/upload`
+- `POST /api/v2/danh-gia` (Review)
+- `GET /api/v1/wishlist`
+
+---
+
+## II. Endpoints trong `lapxpert-backend-client/src/main/java` (Đã cập nhật)
+
+### Xác thực
+- `POST /api/auth/login`
+
+### Quản lý Sản phẩm & Danh mục
+- `GET api/san-pham-online`
+- `GET api/san-pham-online/khoang-gia`
+- `GET api/san-pham-online/top-selling`
+- `GET api/san-pham-online/by-danh-muc/{id}`
+- `GET api/chi-tiet-san-pham/by-san-pham/{id}`
+- `GET /api/danh-muc`
+- `GET /api/san-pham-danh-muc/all-ids`
+
+### Quản lý Giỏ hàng
+- `POST api/gio-hang/them`
+- `GET api/gio-hang/xem`
+- `PUT api/gio-hang/cap-nhat-so-luong`
+- `DELETE api/gio-hang/xoa`
+- `DELETE api/gio-hang/xoa-het`
+- `GET api/gio-hang/{gioHangId}/tong-so-luong`
+
+### Quản lý Hóa đơn
+- `GET /api/hoa-don/{maHoaDon}`
+- `PUT /api/hoa-don/huy/{maHoaDon}`
+
+### Quản lý Giảm giá
+- `GET api/phieu-giam-gia/all`
+- `GET api/phieu-giam-gia/hien-thi-trang-chu`
+- `GET api/phieu-giam-gia/top-discount`
+- `GET /api/dot-giam-gia/all`
+- `GET /api/dot-giam-gia/{id}`
+- `GET /api/dot-giam-gia/{id}/san-pham`
+
+### Thanh toán
+- `POST api/thanh-toan/online`
+- `POST api/thanh-toan/mua-ngay`
+
+---
+
+## III. Phân Tích Trùng Lặp Chức Năng (Cập nhật)
+
+**Kết luận:** Mức độ trùng lặp chức năng **rất cao và nghiêm trọng**. Project client hiện đã sao chép cả logic **xác thực**, bên cạnh các chức năng cốt lõi khác.
+
+**Các điểm trùng lặp chính:**
+
+1.  **[TRÙNG LẶP NGHIÊM TRỌNG] Xác thực:**
+    *   **Chức năng:** Đăng nhập người dùng.
+    *   **Project Chính:** `POST /api/auth/login`.
+    *   **Project Client:** `POST /api/auth/login`.
+    *   **Ghi chú:** Trùng lặp hoàn toàn. Đây là một vấn đề lớn.
+
+2.  **[TRÙNG LẶP] Quản lý Giỏ hàng:**
+    *   **Chức năng:** Thêm, xem, cập nhật, xóa sản phẩm trong giỏ.
+    *   **Project Chính:** `POST /api/v1/cart/add`, `GET /api/v1/cart`, `PUT /api/v1/cart/update-quantity`, `DELETE /api/v1/cart/remove/{id}`.
+    *   **Project Client:** `POST api/gio-hang/them`, `GET api/gio-hang/xem`, `PUT api/gio-hang/cap-nhat-so-luong`, `DELETE api/gio-hang/xoa`.
+    *   **Ghi chú:** Chức năng giống hệt nhau.
+
+3.  **[TRÙNG LẶP] Quản lý Hóa đơn:**
+    *   **Chức năng:** Xem và hủy hóa đơn.
+    *   **Project Chính:** `GET /api/v1/hoa-don/{id}`, `POST /api/v1/hoa-don/{orderId}/cancel`.
+    *   **Project Client:** `GET /api/hoa-don/{maHoaDon}`, `PUT /api/hoa-don/huy/{maHoaDon}`.
+    *   **Ghi chú:** Chức năng tương tự.
+
+4.  **[TRÙNG LẶP] Lấy thông tin Sản phẩm & Giảm giá:**
+    *   **Chức năng:** Lấy dữ liệu về sản phẩm, danh mục, các đợt giảm giá.
+    *   **Project Chính:** Có đầy đủ các API trong `SanPhamController`, `ThuocTinhController`, `DotGiamGiaController`, `PhieuGiamGiaController`.
+    *   **Project Client:** Có các API tương ứng trong `SanPhamOnlineController`, `DanhMucController`, `DotGiamGiaController`, `PhieuGiamGiaController`.
+    *   **Ghi chú:** Trùng lặp về mục đích lấy dữ liệu.
+
+5.  **[TRÙNG LẶP] Thanh toán:**
+    *   **Chức năng:** Xử lý thanh toán.
+    *   **Project Chính:** Tích hợp VNPay, MoMo.
+    *   **Project Client:** API thanh toán chung.
+    *   **Ghi chú:** Trùng lặp về chức năng cốt lõi.

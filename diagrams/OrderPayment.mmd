@@ -1,0 +1,30 @@
+graph TD
+    A[Frontend OrderCreate.vue] --> B[orderApi.processVNPayPayment]
+    A --> C[orderApi.processMoMoPayment]
+    
+    B --> D[HoaDonController.processVNPayPayment]
+    C --> E[HoaDonController.processMoMoPayment]
+    
+    D --> F[HoaDonService.createVNPayPayment]
+    E --> G[HoaDonService.createMoMoPayment]
+    
+    F --> H[VNPayService.createPaymentUrl]
+    G --> I[MoMoService.createPaymentUrl]
+    
+    H --> J[VNPay Gateway]
+    I --> K[MoMo Gateway]
+    
+    J --> L[VNPayController /api/payment/vnpay-payment]
+    J --> M[VNPayController /api/payment/vnpay-ipn]
+    K --> N[MoMoController /api/payment/momo-payment]
+    K --> O[MoMoController /api/payment/momo-ipn]
+    
+    L --> P[VNPayService.orderReturn]
+    M --> Q[VNPayService.processIPN]
+    N --> R[MoMoService.verifyPaymentWithCallback]
+    O --> S[MoMoService.verifyPaymentWithCallback]
+    
+    P --> T[HoaDonService.confirmPayment]
+    Q --> T
+    R --> T
+    S --> T

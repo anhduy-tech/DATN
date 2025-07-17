@@ -1,0 +1,12 @@
+flowchart TD
+    A[User Input] --> B[Spring Boot]
+
+    B -->|Câu hỏi dạng tìm kiếm| C[Python Embed API]
+    C -->|→ vector search| D[PostgreSQL + pgvector]
+    D -->|→ ID + metadata| B
+
+    B -->|Tạo prompt + context| E[GitHub AI (Mistral Medium 3)]
+    E --> F[Generated Answer]
+    F --> G[Frontend Vue]
+
+    B -->|Câu hỏi chung| E
