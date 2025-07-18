@@ -21,6 +21,9 @@ parent_dir = os.path.dirname(current_dir)
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from prompt_templates import VietnamesePromptTemplates
 
 # Configure logging
@@ -33,14 +36,14 @@ class GitHubAIService:
     """
     
     def __init__(self,
-                 github_token: str = "",
-                 endpoint: str = "https://models.github.ai/inference",
-                 model: str = "mistral-ai/mistral-medium-2505",
-                 timeout: int = 180,
-                 max_retries: int = 3,
-                 initial_retry_delay: float = 1.0,
-                 max_retry_delay: float = 60.0,
-                 backoff_multiplier: float = 2.0):
+                 github_token: str = os.getenv("GITHUB_AI_TOKEN"),
+                 endpoint: str = os.getenv("GITHUB_AI_ENDPOINT", "https://models.github.ai/inference"),
+                 model: str = os.getenv("GITHUB_AI_MODEL", "mistral-ai/mistral-medium-2505"),
+                 timeout: int = int(os.getenv("GITHUB_AI_TIMEOUT", 180)),
+                 max_retries: int = int(os.getenv("GITHUB_AI_MAX_RETRIES", 3)),
+                 initial_retry_delay: float = float(os.getenv("GITHUB_AI_INITIAL_RETRY_DELAY", 1.0)),
+                 max_retry_delay: float = float(os.getenv("GITHUB_AI_MAX_RETRY_DELAY", 60.0)),
+                 backoff_multiplier: float = float(os.getenv("GITHUB_AI_BACKOFF_MULTIPLIER", 2.0))):
         """
         Initialize GitHub AI service with enhanced error handling
 

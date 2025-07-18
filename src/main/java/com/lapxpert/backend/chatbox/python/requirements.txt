@@ -32,3 +32,6 @@ torch==2.5.1
 # Development and testing
 pytest==8.3.4
 httpx>=0.27.0,<0.28.0
+
+# For loading environment variables from .env files
+python-dotenv==1.0.1
