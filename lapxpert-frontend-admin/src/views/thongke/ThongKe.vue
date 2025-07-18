@@ -27,7 +27,11 @@ import DonHangCard from '@/views/thongke/components/cards/DonHangCard.vue'
 import SanPhamCard from '@/views/thongke/components/cards/SanPhamCard.vue'
 import KhachHangCard from '@/views/thongke/components/cards/KhachHangCard.vue'
 import NotificationsWidget from '@/views/thongke/components/dashboard/NotificationsWidget.vue'
-import TableAdv from '@/views/thongke/components/TableAdv.vue'
+
+// PrimeVue Components for DataTable
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
+import Tag from 'primevue/tag'
 
 const toast = useToast()
 const { getPrimary, getSurface, isDarkTheme } = useLayout()
@@ -35,6 +39,8 @@ const { getPrimary, getSurface, isDarkTheme } = useLayout()
 // ==================== REACTIVE DATA ====================
 const dangTai = ref(true)
 const loi = ref(null)
+const recentOrders = ref([])
+const loadingRecentOrders = ref(true)
 
 // Dashboard Summary Data
 const tongQuanDashboard = ref({
@@ -316,7 +322,11 @@ const taiDuLieuBieuDoDoanhThu = async () => {
 // Load Order Chart Data
 const taiDuLieuBieuDoDonHang = async () => {
   try {
-    const response = await ThongKeService.layDonHangTheoTrangThai()
+    const [ngayBatDau, ngayKetThuc] = khoangThoiGian.value
+    const tuNgay = ngayBatDau.toISOString().split('T')[0]
+    const denNgay = ngayKetThuc.toISOString().split('T')[0]
+
+    const response = await ThongKeService.layDonHangTheoTrangThai(tuNgay, denNgay)
     const documentStyle = getComputedStyle(document.documentElement)
 
     // Enhanced order status data with meaningful labels and realistic data
@@ -353,7 +363,11 @@ const taiDuLieuBieuDoDonHang = async () => {
 // Load Product Chart Data
 const taiDuLieuBieuDoSanPham = async () => {
   try {
-    const response = await ThongKeService.laySanPhamBanChayNhat()
+    const [ngayBatDau, ngayKetThuc] = khoangThoiGian.value
+    const tuNgay = ngayBatDau.toISOString().split('T')[0]
+    const denNgay = ngayKetThuc.toISOString().split('T')[0]
+
+    const response = await ThongKeService.laySanPhamBanChayNhat(10, tuNgay, denNgay)
     const documentStyle = getComputedStyle(document.documentElement)
 
     // Enhanced product data with realistic laptop product names and sales
@@ -403,7 +417,8 @@ const taiTatCaDuLieu = async () => {
       taiDuLieuTongQuanDashboard(),
       taiDuLieuBieuDoDoanhThu(),
       taiDuLieuBieuDoDonHang(),
-      taiDuLieuBieuDoSanPham()
+      taiDuLieuBieuDoSanPham(),
+      taiDonHangGanDay() // Load recent orders
     ])
     hienThiThanhCong('Dữ liệu đã được tải thành công')
   } catch (error) {
@@ -412,6 +427,25 @@ const taiTatCaDuLieu = async () => {
     hienThiLoi(loi.value)
   } finally {
     dangTai.value = false
+  }
+}
+
+// Load Recent Orders Data
+const taiDonHangGanDay = async () => {
+  loadingRecentOrders.value = true
+  try {
+    const response = await ThongKeService.layDonHangGanDay(5) // Lấy 5 đơn hàng gần nhất
+    recentOrders.value = response.data.map(order => ({
+      ...order,
+      // Ensure ngayTao is a Date object for proper formatting
+      ngayTao: new Date(order.ngayTao)
+    }))
+  } catch (err) {
+    console.error('Lỗi khi tải đơn hàng gần đây:', err)
+    hienThiLoi('Không thể tải đơn hàng gần đây')
+    recentOrders.value = [] // Clear data on error
+  } finally {
+    loadingRecentOrders.value = false
   }
 }
 
@@ -439,6 +473,8 @@ const xuLyThayDoiKy = () => {
 
   if (kyChon.value !== 'tuy_chon') {
     taiDuLieuBieuDoDoanhThu()
+    taiDuLieuBieuDoDonHang()
+    taiDuLieuBieuDoSanPham()
   }
 }
 
@@ -446,11 +482,67 @@ const xuLyThayDoiKy = () => {
 const xuLyThayDoiKhoangThoiGian = () => {
   kyChon.value = 'tuy_chon'
   taiDuLieuBieuDoDoanhThu()
+  taiDuLieuBieuDoDonHang()
+  taiDuLieuBieuDoSanPham()
 }
 
 // Refresh Data
 const lamMoiDuLieu = () => {
   taiTatCaDuLieu()
+}
+
+// Formatters for DataTable
+const formatCurrency = (value) => {
+  if (!value && value !== 0) return '0 ₫'
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND'
+  }).format(value)
+}
+
+const formatDateTime = (dateString) => {
+  if (!dateString) return 'N/A'
+  const date = new Date(dateString)
+  return new Intl.DateTimeFormat('vi-VN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  }).format(date)
+}
+
+const getStatusLabel = (status) => {
+  switch (status) {
+    case 'CHO_XAC_NHAN': return 'Chờ xác nhận'
+    case 'DANG_XU_LY': return 'Đang xử lý'
+    case 'DA_XAC_NHAN': return 'Đã xác nhận'
+    case 'DANG_DONG_GOI': return 'Đang đóng gói'
+    case 'DANG_GIAO_HANG': return 'Đang giao hàng'
+    case 'DA_GIAO_HANG': return 'Đã giao hàng'
+    case 'HOAN_THANH': return 'Hoàn thành'
+    case 'DA_HUY': return 'Đã hủy'
+    case 'YEU_CAU_TRA_HANG': return 'Yêu cầu trả hàng'
+    case 'DA_TRA_HANG': return 'Đã trả hàng'
+    default: return status
+  }
+}
+
+const getSeverity = (status) => {
+  switch (status) {
+    case 'CHO_XAC_NHAN': return 'warning'
+    case 'DANG_XU_LY': return 'info'
+    case 'DA_XAC_NHAN': return 'info'
+    case 'DANG_DONG_GOI': return 'info'
+    case 'DANG_GIAO_HANG': return 'primary'
+    case 'DA_GIAO_HANG': return 'success'
+    case 'HOAN_THANH': return 'success'
+    case 'DA_HUY': return 'danger'
+    case 'YEU_CAU_TRA_HANG': return 'danger'
+    case 'DA_TRA_HANG': return 'danger'
+    default: return null
+  }
 }
 
 // Export Report
@@ -635,6 +727,34 @@ onMounted(() => {
           </p>
         </div>
 
+        <!-- Time Period Controls -->
+        <div class="flex flex-wrap gap-4 items-center justify-between p-4 bg-surface-50 dark:bg-surface-800 rounded-lg border border-surface-200 dark:border-surface-700 mb-6">
+          <div class="flex items-center gap-3">
+            <i class="pi pi-calendar text-primary"></i>
+            <span class="font-medium text-surface-700 dark:text-surface-300">Khoảng thời gian:</span>
+            <Select
+              v-model="kyChon"
+              :options="cacLuaChonKy"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="Chọn khoảng thời gian"
+              @change="xuLyThayDoiKy"
+              class="w-48"
+            />
+          </div>
+          <div v-if="kyChon === 'tuy_chon'" class="flex gap-2">
+            <Calendar
+              v-model="khoangThoiGian"
+              selectionMode="range"
+              :manualInput="false"
+              dateFormat="dd/mm/yy"
+              placeholder="Chọn khoảng thời gian"
+              @date-select="xuLyThayDoiKhoangThoiGian"
+              showIcon
+            />
+          </div>
+        </div>
+
         <Tabs value="0" class="custom-tabs">
           <TabList class="flex border-b border-surface-200 dark:border-surface-700 mb-6">
             <Tab
@@ -658,47 +778,13 @@ onMounted(() => {
               <i class="pi pi-box text-base"></i>
               <span>Sản Phẩm & Hiệu Suất</span>
             </Tab>
-            <Tab
-              value="3"
-              class="flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all duration-200 border-b-2 border-transparent hover:text-primary hover:border-primary-200 data-[state=active]:text-primary data-[state=active]:border-primary"
-            >
-              <i class="pi pi-users text-base"></i>
-              <span>Khách Hàng & Hành Vi</span>
-            </Tab>
+
           </TabList>
 
           <TabPanels>
             <!-- Revenue & Growth Analysis Tab -->
             <TabPanel value="0">
               <div class="space-y-6">
-                <!-- Time Period Controls -->
-                <div class="flex flex-wrap gap-4 items-center justify-between p-4 bg-surface-50 dark:bg-surface-800 rounded-lg border border-surface-200 dark:border-surface-700">
-                  <div class="flex items-center gap-3">
-                    <i class="pi pi-calendar text-primary"></i>
-                    <span class="font-medium text-surface-700 dark:text-surface-300">Khoảng thời gian:</span>
-                    <Select
-                      v-model="kyChon"
-                      :options="cacLuaChonKy"
-                      optionLabel="label"
-                      optionValue="value"
-                      placeholder="Chọn khoảng thời gian"
-                      @change="xuLyThayDoiKy"
-                      class="w-48"
-                    />
-                  </div>
-                  <div v-if="kyChon === 'tuy_chon'" class="flex gap-2">
-                    <Calendar
-                      v-model="khoangThoiGian"
-                      selectionMode="range"
-                      :manualInput="false"
-                      dateFormat="dd/mm/yy"
-                      placeholder="Chọn khoảng thời gian"
-                      @date-select="xuLyThayDoiKhoangThoiGian"
-                      showIcon
-                    />
-                  </div>
-                </div>
-
                 <div class="grid grid-cols-12 gap-6">
                   <!-- Main Revenue Chart -->
                   <div class="col-span-12 lg:col-span-8">
@@ -874,7 +960,49 @@ onMounted(() => {
                       📋 Đơn Hàng Gần Đây
                     </h3>
                   </div>
-                  <TableAdv />
+                  <DataTable
+                    :value="recentOrders"
+                    :loading="loadingRecentOrders"
+                    :rows="5"
+                    :paginator="recentOrders.length > 5"
+                    class="p-datatable-sm"
+                    showGridlines
+                    responsiveLayout="scroll"
+                  >
+                    <Column header="STT" style="width: 3rem">
+                      <template #body="{ index }">
+                        {{ index + 1 }}
+                      </template>
+                    </Column>
+                    <Column field="maHoaDon" header="Mã Đơn Hàng" style="min-width: 8rem"></Column>
+                    <Column field="ngayTao" header="Ngày Đặt" style="min-width: 10rem">
+                      <template #body="{ data }">
+                        {{ formatDateTime(data.ngayTao) }}
+                      </template>
+                    </Column>
+                    <Column field="tongThanhToan" header="Tổng Tiền" style="min-width: 10rem">
+                      <template #body="{ data }">
+                        {{ formatCurrency(data.tongThanhToan) }}
+                      </template>
+                    </Column>
+                    <Column field="trangThaiDonHang" header="Trạng Thái" style="min-width: 10rem">
+                      <template #body="{ data }">
+                        <Tag :value="getStatusLabel(data.trangThaiDonHang)" :severity="getSeverity(data.trangThaiDonHang)" />
+                      </template>
+                    </Column>
+                    <template #empty>
+                      <div class="text-center py-4">
+                        <i class="pi pi-box text-4xl text-surface-400 mb-3"></i>
+                        <p class="text-surface-500">Không có đơn hàng gần đây</p>
+                      </div>
+                    </template>
+                    <template #loading>
+                      <div class="text-center py-4">
+                        <ProgressSpinner />
+                        <p class="mt-2 text-surface-500">Đang tải đơn hàng...</p>
+                      </div>
+                    </template>
+                  </DataTable>
                 </div>
               </div>
             </TabPanel>
@@ -976,102 +1104,7 @@ onMounted(() => {
               </div>
             </TabPanel>
 
-            <!-- Customer & Behavior Analysis Tab -->
-            <TabPanel value="3">
-              <div class="space-y-6">
-                <div class="grid grid-cols-12 gap-6">
-                  <!-- Customer Behavior Chart -->
-                  <div class="col-span-12 lg:col-span-8">
-                    <div class="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-surface-800 dark:to-surface-900 rounded-lg border border-indigo-200 dark:border-surface-700 p-6">
-                      <div class="flex justify-between items-center mb-4">
-                        <div>
-                          <h3 class="text-lg font-semibold text-surface-900 dark:text-surface-0 m-0">
-                            👥 Phân Tích Hành Vi Khách Hàng
-                          </h3>
-                          <p class="text-surface-600 dark:text-surface-400 text-sm mt-1">
-                            Xu hướng mua sắm và tương tác của khách hàng
-                          </p>
-                        </div>
-                        <Badge v-if="dangTai" value="Đang tải..." severity="info" />
-                      </div>
-                      <div class="h-80">
-                        <div class="flex justify-center items-center h-full">
-                          <div class="text-center">
-                            <i class="pi pi-users text-4xl text-surface-400 mb-3"></i>
-                            <p class="text-surface-500">Biểu đồ hành vi khách hàng đang được phát triển</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
 
-                  <!-- Customer Metrics -->
-                  <div class="col-span-12 lg:col-span-4">
-                    <div class="space-y-4">
-                      <!-- Total Customers -->
-                      <div class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-                        <div class="flex items-center gap-3 mb-2">
-                          <div class="w-8 h-8 bg-green-100 dark:bg-green-800 rounded-full flex items-center justify-center">
-                            <i class="pi pi-users text-green-600 dark:text-green-400"></i>
-                          </div>
-                          <span class="font-medium text-green-800 dark:text-green-200">Tổng Khách Hàng</span>
-                        </div>
-                        <p class="text-2xl font-bold text-green-700 dark:text-green-300 mb-1">{{ dinhDangSo(tongQuanDashboard.khachHang.tongSo || 0) }}</p>
-                        <p class="text-sm text-green-600 dark:text-green-400">Khách hàng đã đăng ký</p>
-                      </div>
-
-                      <!-- New Customers -->
-                      <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                        <div class="flex items-center gap-3 mb-2">
-                          <div class="w-8 h-8 bg-blue-100 dark:bg-blue-800 rounded-full flex items-center justify-center">
-                            <i class="pi pi-user-plus text-blue-600 dark:text-blue-400"></i>
-                          </div>
-                          <span class="font-medium text-blue-800 dark:text-blue-200">Khách Mới Tháng Này</span>
-                        </div>
-                        <p class="text-2xl font-bold text-blue-700 dark:text-blue-300 mb-1">{{ dinhDangSo(tongQuanDashboard.khachHang.moiThangNay || 0) }}</p>
-                        <p class="text-sm text-blue-600 dark:text-blue-400">Khách hàng mới đăng ký</p>
-                      </div>
-
-                      <!-- Customer Retention -->
-                      <div class="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
-                        <div class="flex items-center gap-3 mb-2">
-                          <div class="w-8 h-8 bg-purple-100 dark:bg-purple-800 rounded-full flex items-center justify-center">
-                            <i class="pi pi-heart text-purple-600 dark:text-purple-400"></i>
-                          </div>
-                          <span class="font-medium text-purple-800 dark:text-purple-200">Tỷ Lệ Giữ Chân</span>
-                        </div>
-                        <p class="text-2xl font-bold text-purple-700 dark:text-purple-300 mb-1">{{ dinhDangPhanTram(tongQuanDashboard.khachHang.tyLeGiuChan || 0) }}</p>
-                        <p class="text-sm text-purple-600 dark:text-purple-400">Khách hàng quay lại</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Customer Insights -->
-                <div class="bg-surface-50 dark:bg-surface-800 rounded-lg border border-surface-200 dark:border-surface-700 p-6">
-                  <div class="flex items-center gap-3 mb-4">
-                    <i class="pi pi-chart-pie text-primary text-lg"></i>
-                    <h3 class="text-lg font-semibold text-surface-900 dark:text-surface-0 m-0">
-                      📈 Thông Tin Chi Tiết Khách Hàng
-                    </h3>
-                  </div>
-                  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div class="text-center p-4 bg-white dark:bg-surface-700 rounded-lg border border-surface-200 dark:border-surface-600">
-                      <p class="text-2xl font-bold text-primary mb-1">{{ dinhDangTienTe(tongQuanDashboard.khachHang.giaTriTrungBinh || 0) }}</p>
-                      <p class="text-sm text-surface-600 dark:text-surface-400">Giá trị trung bình/khách</p>
-                    </div>
-                    <div class="text-center p-4 bg-white dark:bg-surface-700 rounded-lg border border-surface-200 dark:border-surface-600">
-                      <p class="text-2xl font-bold text-primary mb-1">2.3</p>
-                      <p class="text-sm text-surface-600 dark:text-surface-400">Đơn hàng TB/khách</p>
-                    </div>
-                    <div class="text-center p-4 bg-white dark:bg-surface-700 rounded-lg border border-surface-200 dark:border-surface-600">
-                      <p class="text-2xl font-bold text-primary mb-1">45 ngày</p>
-                      <p class="text-sm text-surface-600 dark:text-surface-400">Chu kỳ mua hàng TB</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </TabPanel>
           </TabPanels>
         </Tabs>
       </div>

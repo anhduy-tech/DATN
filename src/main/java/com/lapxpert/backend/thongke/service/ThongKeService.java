@@ -4,6 +4,7 @@ import com.lapxpert.backend.thongke.dto.*;
 
 import java.time.LocalDate;
 import java.util.Map;
+import java.util.List;
 
 /**
  * ThongKe (Statistics) Service Interface
@@ -45,15 +46,24 @@ public interface ThongKeService {
 
     /**
      * Get order statistics by status
+     * @param tuNgay Start date for analysis period
+     * @param denNgay End date for analysis period
      * @return Order count breakdown by status
      */
-    DonHangTheoTrangThaiDto layDonHangTheoTrangThai();
+    DonHangTheoTrangThaiDto layDonHangTheoTrangThai(LocalDate tuNgay, LocalDate denNgay);
 
     /**
      * Get average order value statistics
      * @return Average order value metrics
      */
     Map<String, Object> layGiaTriDonHangTrungBinh();
+
+    /**
+     * Get recent orders
+     * @param soLuong Number of recent orders to return
+     * @return List of recent orders
+     */
+    List<com.lapxpert.backend.hoadon.entity.HoaDon> layDonHangGanDay(Integer soLuong);
 
     // ==================== SAN PHAM (PRODUCT) STATISTICS ====================
 

@@ -1,6 +1,7 @@
 package com.lapxpert.backend.hoadon.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.lapxpert.backend.common.audit.BaseAuditableEntity;
 import com.lapxpert.backend.nguoidung.entity.NguoiDung;
 import com.lapxpert.backend.nguoidung.entity.DiaChi;
@@ -105,6 +106,7 @@ public class HoaDon extends BaseAuditableEntity {
     @Column(name = "ngay_du_kien_giao_hang")
     private Instant ngayDuKienGiaoHang;
 
+    @JsonManagedReference
     @OneToMany(mappedBy = "hoaDon", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<HoaDonChiTiet> hoaDonChiTiets = new ArrayList<>();
 

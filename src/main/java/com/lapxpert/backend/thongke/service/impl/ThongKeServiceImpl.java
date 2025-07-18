@@ -31,6 +31,7 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.List;
 
 /**
  * ThongKe (Statistics) Service Implementation
@@ -513,14 +514,25 @@ public class ThongKeServiceImpl implements ThongKeService {
     }
 
     @Override
-    public DonHangTheoTrangThaiDto layDonHangTheoTrangThai() {
-        log.debug("Getting order statistics by status");
+    public DonHangTheoTrangThaiDto layDonHangTheoTrangThai(LocalDate tuNgay, LocalDate denNgay) {
+        log.debug("Getting order statistics by status from {} to {}", tuNgay, denNgay);
+
+        // Set default dates if not provided
+        if (denNgay == null) {
+            denNgay = LocalDate.now();
+        }
+        if (tuNgay == null) {
+            tuNgay = denNgay.minusDays(30);
+        }
+
+        Instant tuNgayInstant = tuNgay.atStartOfDay().toInstant(java.time.ZoneOffset.UTC);
+        Instant denNgayInstant = denNgay.atTime(23, 59, 59).toInstant(java.time.ZoneOffset.UTC);
 
         // Get all order statuses and their counts
         Map<TrangThaiDonHang, Long> statusCounts = Arrays.stream(TrangThaiDonHang.values())
             .collect(Collectors.toMap(
                 status -> status,
-                status -> hoaDonRepository.countByTrangThaiDonHang(status)
+                status -> hoaDonRepository.countByTrangThaiDonHangAndNgayTaoBetween(status, tuNgayInstant, denNgayInstant)
             ));
 
         Long tongSoDonHang = statusCounts.values().stream().mapToLong(Long::longValue).sum();
@@ -639,6 +651,12 @@ public class ThongKeServiceImpl implements ThongKeService {
             case DA_TRA_HANG -> "Trả hàng";
             default -> status.name();
         };
+    }
+
+    @Override
+    public List<HoaDon> layDonHangGanDay(Integer soLuong) {
+        log.debug("Getting {} recent orders", soLuong);
+        return hoaDonRepository.findTopByOrderByNgayTaoDesc(PageRequest.of(0, soLuong));
     }
 
     // ==================== SAN PHAM (PRODUCT) STATISTICS ====================

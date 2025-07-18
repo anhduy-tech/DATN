@@ -50,9 +50,14 @@ export default {
 
     /**
      * Get order statistics by status
+     * @param {string} tuNgay - Start date (YYYY-MM-DD format)
+     * @param {string} denNgay - End date (YYYY-MM-DD format)
      */
-    layDonHangTheoTrangThai() {
-        return privateApi.get(`${API_URL}/don-hang/theo-trang-thai`);
+    layDonHangTheoTrangThai(tuNgay = null, denNgay = null) {
+        const params = {};
+        if (tuNgay) params.tuNgay = tuNgay;
+        if (denNgay) params.denNgay = denNgay;
+        return privateApi.get(`${API_URL}/don-hang/theo-trang-thai`, { params });
     },
 
     /**
@@ -60,6 +65,14 @@ export default {
      */
     layGiaTriDonHangTrungBinh() {
         return privateApi.get(`${API_URL}/don-hang/gia-tri-trung-binh`);
+    },
+
+    /**
+     * Get recent orders
+     * @param {number} soLuong - Number of recent orders to return
+     */
+    layDonHangGanDay(soLuong = 10) {
+        return privateApi.get(`${API_URL}/don-hang/gan-day`, { params: { soLuong } });
     },
 
     // ==================== SAN PHAM (PRODUCT) STATISTICS ====================

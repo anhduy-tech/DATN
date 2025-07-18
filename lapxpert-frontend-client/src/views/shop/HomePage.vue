@@ -300,7 +300,7 @@ onMounted(async () => {
         <h2 class="text-3xl font-bold text-center mb-8 text-gray-800">Sản phẩm nổi bật</h2>
         <Carousel :value="featuredProducts" :numVisible="4" :numScroll="1" :responsiveOptions="responsiveOptions" class="product-carousel" :showNavigators="false">
           <template #item="{ data: product }">
-            <Card class="border rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 bg-white mx-2">
+            <Card class="border h-[500px] rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 bg-white mx-2">
               <template #content>
                 <div class="relative w-full h-60 mb-4">
                   <img :src="getProductImageUrl(product) || 'https://via.placeholder.com/300'" :alt="product.tenSanPham" class="w-full h-60 object-contain" @error="onImageError"/>

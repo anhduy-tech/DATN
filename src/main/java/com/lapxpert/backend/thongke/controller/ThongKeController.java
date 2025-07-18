@@ -4,6 +4,7 @@ import com.lapxpert.backend.thongke.dto.*;
 import com.lapxpert.backend.thongke.service.ThongKeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.lapxpert.backend.hoadon.entity.HoaDon;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.Map;
+import java.util.List;
 
 /**
  * ThongKe (Statistics) Controller
@@ -116,11 +118,13 @@ public class ThongKeController {
      */
     @GetMapping("/don-hang/theo-trang-thai")
     @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
-    public ResponseEntity<DonHangTheoTrangThaiDto> layDonHangTheoTrangThai() {
-        log.debug("Getting order statistics by status");
+    public ResponseEntity<DonHangTheoTrangThaiDto> layDonHangTheoTrangThai(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate tuNgay,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate denNgay) {
+        log.debug("Getting order statistics by status from {} to {}", tuNgay, denNgay);
         
         try {
-            DonHangTheoTrangThaiDto result = thongKeService.layDonHangTheoTrangThai();
+            DonHangTheoTrangThaiDto result = thongKeService.layDonHangTheoTrangThai(tuNgay, denNgay);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             log.error("Error getting order statistics by status", e);
@@ -142,6 +146,27 @@ public class ThongKeController {
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             log.error("Error getting average order value statistics", e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    /**
+     * Get recent orders
+     * @param soLuong Number of recent orders to return (default: 10)
+     * @return List of recent orders
+     */
+    @GetMapping("/don-hang/gan-day")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
+    public ResponseEntity<List<HoaDon>> layDonHangGanDay(
+            @RequestParam(defaultValue = "10") Integer soLuong) {
+        
+        log.debug("Getting {} recent orders", soLuong);
+        
+        try {
+            List<HoaDon> result = thongKeService.layDonHangGanDay(soLuong);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error getting recent orders", e);
             return ResponseEntity.internalServerError().build();
         }
     }
