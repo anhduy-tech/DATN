@@ -34,7 +34,7 @@ class GitHubAIService:
     """
     GitHub AI service for generating Vietnamese product recommendations using Mistral Medium 3 (25.05)
     """
-    
+
     def __init__(self,
                  github_token: str = os.getenv("GITHUB_AI_TOKEN"),
                  endpoint: str = os.getenv("GITHUB_AI_ENDPOINT", "https://models.github.ai/inference"),
@@ -71,7 +71,7 @@ class GitHubAIService:
         self.client = None
         self.prompt_templates = VietnamesePromptTemplates()
         self._initialize_clients()
-    
+
     def _initialize_clients(self):
         """Initialize GitHub AI client"""
         try:
@@ -110,61 +110,61 @@ class GitHubAIService:
             return False  # Don't retry auth errors
 
         return True  # Retry unknown errors
-    
+
     def check_connection(self) -> bool:
         """
         Check if GitHub AI service is available
-        
+
         Returns:
             True if connection is successful, False otherwise
         """
         if not self.client:
             return False
-        
+
         try:
             # Test with a simple message
             test_messages = [
                 SystemMessage(content="You are a helpful assistant."),
                 UserMessage(content="Hello")
             ]
-            
+
             response = self.client.complete(
                 messages=test_messages,
                 model=self.model,
                 max_tokens=10,
                 temperature=0.1
             )
-            
+
             logger.info("✅ GitHub AI connection successful")
             return True
         except Exception as e:
             logger.error(f"❌ GitHub AI connection failed: {e}")
             return False
-    
+
     def check_model_availability(self) -> bool:
         """
         Check if the specified model is available
-        
+
         Returns:
             True if model is available, False otherwise
         """
         if not self.client:
             return False
-        
+
         try:
             # Test model availability with a minimal request
             test_messages = [
                 SystemMessage(content="Test"),
                 UserMessage(content="Hi")
             ]
-            
+
             response = self.client.complete(
                 messages=test_messages,
                 model=self.model,
                 max_tokens=5,
                 temperature=0.1
             )
-            
+
             logger.info(f"✅ Model {self.model} is available")
             return True
         except Exception as e:
