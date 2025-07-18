@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -33,10 +34,10 @@ public interface HoaDonRepository extends JpaRepository<HoaDon, Long> {
      * Find order by ID with staff and customer relationships eagerly loaded
      */
     @Query("SELECT h FROM HoaDon h " +
-           "LEFT JOIN FETCH h.nhanVien " +
-           "LEFT JOIN FETCH h.khachHang " +
-           "LEFT JOIN FETCH h.diaChiGiaoHang " +
-           "WHERE h.id = :id")
+            "LEFT JOIN FETCH h.nhanVien " +
+            "LEFT JOIN FETCH h.khachHang " +
+            "LEFT JOIN FETCH h.diaChiGiaoHang " +
+            "WHERE h.id = :id")
     Optional<HoaDon> findByIdWithStaffAndCustomer(@Param("id") Long id);
 
     // ==================== STATISTICS METHODS ====================
@@ -61,6 +62,16 @@ public interface HoaDonRepository extends JpaRepository<HoaDon, Long> {
      */
     Long countByNgayTaoBetween(Instant startDate, Instant endDate);
 
+    /**
+     * Count orders by status and date range
+     */
+    Long countByTrangThaiDonHangAndNgayTaoBetween(TrangThaiDonHang trangThaiDonHang, Instant startDate, Instant endDate);
+
+    /**
+     * Find top N orders ordered by creation date descending.
+     */
+    List<HoaDon> findTopByOrderByNgayTaoDesc(Pageable pageable);
+
     // ==================== CUSTOMER VALUE STATISTICS ====================
 
     /**
@@ -68,12 +79,12 @@ public interface HoaDonRepository extends JpaRepository<HoaDon, Long> {
      * @return Array of [customer_count, total_value, avg_value, max_value, min_value]
      */
     @Query("SELECT COUNT(DISTINCT h.khachHang.id), " +
-           "SUM(h.tongThanhToan), " +
-           "AVG(h.tongThanhToan), " +
-           "MAX(h.tongThanhToan), " +
-           "MIN(h.tongThanhToan) " +
-           "FROM HoaDon h " +
-           "WHERE h.trangThaiDonHang = :trangThai")
+            "SUM(h.tongThanhToan), " +
+            "AVG(h.tongThanhToan), " +
+            "MAX(h.tongThanhToan), " +
+            "MIN(h.tongThanhToan) " +
+            "FROM HoaDon h " +
+            "WHERE h.trangThaiDonHang = :trangThai")
     Object[] getCustomerValueStatistics(@Param("trangThai") TrangThaiDonHang trangThai);
 
     /**
@@ -82,35 +93,35 @@ public interface HoaDonRepository extends JpaRepository<HoaDon, Long> {
      * @return total value of completed orders
      */
     @Query("SELECT COALESCE(SUM(h.tongThanhToan), 0) FROM HoaDon h " +
-           "WHERE h.khachHang.id = :customerId " +
-           "AND h.trangThaiDonHang = :trangThai")
+            "WHERE h.khachHang.id = :customerId " +
+            "AND h.trangThaiDonHang = :trangThai")
     BigDecimal getCustomerLifetimeValue(@Param("customerId") Long customerId,
-                                       @Param("trangThai") TrangThaiDonHang trangThai);
+                                        @Param("trangThai") TrangThaiDonHang trangThai);
 
     /**
      * Count customers who made orders in a period
      */
     @Query("SELECT COUNT(DISTINCT h.khachHang.id) FROM HoaDon h " +
-           "WHERE h.ngayTao BETWEEN :tuNgay AND :denNgay " +
-           "AND h.trangThaiDonHang = :trangThai")
+            "WHERE h.ngayTao BETWEEN :tuNgay AND :denNgay " +
+            "AND h.trangThaiDonHang = :trangThai")
     Long countActiveCustomers(@Param("tuNgay") Instant tuNgay,
-                             @Param("denNgay") Instant denNgay,
-                             @Param("trangThai") TrangThaiDonHang trangThai);
+                              @Param("denNgay") Instant denNgay,
+                              @Param("trangThai") TrangThaiDonHang trangThai);
 
     /**
      * Count customers who made repeat orders
      */
     @Query("SELECT COUNT(DISTINCT h.khachHang.id) FROM HoaDon h " +
-           "WHERE h.khachHang.id IN (" +
-           "  SELECT h2.khachHang.id FROM HoaDon h2 " +
-           "  WHERE h2.ngayTao BETWEEN :tuNgay AND :denNgay " +
-           "  AND h2.trangThaiDonHang = :trangThai " +
-           "  GROUP BY h2.khachHang.id " +
-           "  HAVING COUNT(h2.id) > 1" +
-           ")")
+            "WHERE h.khachHang.id IN (" +
+            "  SELECT h2.khachHang.id FROM HoaDon h2 " +
+            "  WHERE h2.ngayTao BETWEEN :tuNgay AND :denNgay " +
+            "  AND h2.trangThaiDonHang = :trangThai " +
+            "  GROUP BY h2.khachHang.id " +
+            "  HAVING COUNT(h2.id) > 1" +
+            ")")
     Long countRepeatCustomers(@Param("tuNgay") Instant tuNgay,
-                             @Param("denNgay") Instant denNgay,
-                             @Param("trangThai") TrangThaiDonHang trangThai);
+                              @Param("denNgay") Instant denNgay,
+                              @Param("trangThai") TrangThaiDonHang trangThai);
 
     // ==================== PAYMENT MONITORING METHODS ====================
 
@@ -143,9 +154,9 @@ public interface HoaDonRepository extends JpaRepository<HoaDon, Long> {
      * Joins through HoaDonThanhToan to ThanhToan to get payment method
      */
     @Query("SELECT COUNT(DISTINCT h) FROM HoaDon h " +
-           "JOIN HoaDonThanhToan hdt ON h.id = hdt.hoaDon.id " +
-           "JOIN ThanhToan t ON hdt.thanhToan.id = t.id " +
-           "WHERE t.phuongThucThanhToan = :paymentMethod AND h.ngayTao >= :since")
+            "JOIN HoaDonThanhToan hdt ON h.id = hdt.hoaDon.id " +
+            "JOIN ThanhToan t ON hdt.thanhToan.id = t.id " +
+            "WHERE t.phuongThucThanhToan = :paymentMethod AND h.ngayTao >= :since")
     long countOrdersByPaymentMethodInPeriod(@Param("paymentMethod") PhuongThucThanhToan paymentMethod, @Param("since") Instant since);
 
     // ==================== ORDER EXPIRATION METHODS ====================
@@ -155,12 +166,10 @@ public interface HoaDonRepository extends JpaRepository<HoaDon, Long> {
      * Orders that are unpaid and created before the cutoff time
      */
     @Query("SELECT h FROM HoaDon h " +
-           "LEFT JOIN FETCH h.khachHang " +
-           "LEFT JOIN FETCH h.hoaDonChiTiets " +
-           "WHERE h.trangThaiThanhToan = 'CHUA_THANH_TOAN' " +
-           "AND h.trangThaiDonHang NOT IN ('DA_HUY', 'HOAN_THANH') " +
-           "AND h.ngayTao < :cutoffTime")
+            "LEFT JOIN FETCH h.khachHang " +
+            "LEFT JOIN FETCH h.hoaDonChiTiets " +
+            "WHERE h.trangThaiThanhToan = 'CHUA_THANH_TOAN' " +
+            "AND h.trangThaiDonHang NOT IN ('DA_HUY', 'HOAN_THANH') " +
+            "AND h.ngayTao < :cutoffTime")
     List<HoaDon> findExpiredUnpaidOrders(@Param("cutoffTime") Instant cutoffTime);
-
-
 }
