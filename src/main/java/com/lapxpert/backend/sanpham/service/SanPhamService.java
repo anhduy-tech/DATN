@@ -72,36 +72,30 @@ public class SanPhamService extends BusinessEntityService<SanPham, Long, SanPham
 
     @Transactional
     public SanPhamDto createSanPhamWithChiTiet(SanPhamDto sanPhamDto) {
-        // Chuyển đổi DTO sang Entity
+        // 1. Generate and validate MaSanPham
+        if (sanPhamDto.getMaSanPham() == null || sanPhamDto.getMaSanPham().trim().isEmpty()) {
+            sanPhamDto.setMaSanPham(generateMaSanPham());
+        } else {
+            if (sanPhamRepository.existsByMaSanPham(sanPhamDto.getMaSanPham())) {
+                throw new IllegalArgumentException("Mã sản phẩm đã tồn tại: " + sanPhamDto.getMaSanPham());
+            }
+        }
+
         SanPham sanPham = sanPhamMapper.toEntity(sanPhamDto);
-        sanPham.setMaSanPham(generateMaSanPham());
-        // Lưu sản phẩm chính trước
         SanPham savedSanPham = sanPhamRepository.save(sanPham);
 
-        // Xử lý danh sách sản phẩm chi tiết
+        // 2. Generate unique SKUs for each variant at the backend
         if (sanPhamDto.getSanPhamChiTiets() != null && !sanPhamDto.getSanPhamChiTiets().isEmpty()) {
-            Set<String> incomingSkus = new HashSet<>();
-            Set<SanPhamChiTiet> chiTiets = sanPhamDto.getSanPhamChiTiets().stream()
-                    .map(dto -> {
-                        SanPhamChiTiet chiTiet = sanPhamChiTietMapper.toEntity(dto);
-                        // Generate SKU based on product code and variant attributes
-                        if (chiTiet.getSku() == null || chiTiet.getSku().isEmpty()) {
-                            String baseSku = generateVariantSku(savedSanPham.getMaSanPham(), chiTiet);
-                            // Generate unique SKU to avoid database conflicts
-                            String uniqueSku = generateUniqueSku(baseSku, incomingSkus, new HashSet<>());
-                            chiTiet.setSku(uniqueSku);
-                            incomingSkus.add(uniqueSku);
-                        }
-                        chiTiet.setSanPham(savedSanPham);
-                        return chiTiet;
-                    })
-                    .collect(Collectors.toSet());
-
-            // Lưu danh sách sản phẩm chi tiết
-            Set<SanPhamChiTiet> savedChiTiets = sanPhamChiTietRepository.saveAll(chiTiets)
-                    .stream()
-                    .collect(Collectors.toSet());
-
+            Set<SanPhamChiTiet> chiTiets = new HashSet<>();
+            for (SanPhamChiTietDto dto : sanPhamDto.getSanPhamChiTiets()) {
+                SanPhamChiTiet chiTiet = sanPhamChiTietMapper.toEntity(dto);
+                chiTiet.setSanPham(savedSanPham);
+                // Backend takes full control of SKU generation
+                String sku = generateUniqueSkuForVariant(savedSanPham.getMaSanPham(), chiTiet);
+                chiTiet.setSku(sku);
+                chiTiets.add(chiTiet);
+            }
+            Set<SanPhamChiTiet> savedChiTiets = new HashSet<>(sanPhamChiTietRepository.saveAll(chiTiets));
             savedSanPham.setSanPhamChiTiets(savedChiTiets);
         }
 
@@ -552,7 +546,6 @@ public class SanPhamService extends BusinessEntityService<SanPham, Long, SanPham
 
             // Process incoming variants
             Set<SanPhamChiTiet> incomingVariants = new HashSet<>();
-            Set<String> incomingSerialNumbers = new HashSet<>();
 
             for (var dto : sanPhamDto.getSanPhamChiTiets()) {
                 if (dto.getId() != null) {
@@ -566,21 +559,14 @@ public class SanPhamService extends BusinessEntityService<SanPham, Long, SanPham
                         // Update existing variant fields
                         updateVariantFromDto(existingVariant, dto);
                         incomingVariants.add(existingVariant);
-                        incomingSerialNumbers.add(existingVariant.getSku());
                     }
                 } else {
                     // Create new variant
                     SanPhamChiTiet newVariant = sanPhamChiTietMapper.toEntity(dto);
 
-                    // Generate SKU based on product code and variant attributes
-                    if (newVariant.getSku() == null || newVariant.getSku().isEmpty()) {
-                        newVariant.setSku(generateVariantSku(existingProduct.getMaSanPham(), newVariant));
-                    }
-
-                    // Check for SKU conflicts and generate unique one if needed
-                    String uniqueSku = generateUniqueSku(newVariant.getSku(), incomingSerialNumbers, existingVariants);
-                    newVariant.setSku(uniqueSku);
-                    incomingSerialNumbers.add(uniqueSku);
+                    // Backend takes full control of SKU generation for new variants
+                    String sku = generateUniqueSkuForVariant(existingProduct.getMaSanPham(), newVariant);
+                    newVariant.setSku(sku);
 
                     newVariant.setSanPham(existingProduct);
                     newVariant.setTrangThai(true); // Available status
@@ -663,91 +649,26 @@ public class SanPhamService extends BusinessEntityService<SanPham, Long, SanPham
      * @param variant Variant with attributes
      * @return Generated SKU
      */
-    private String generateVariantSku(String productCode, SanPhamChiTiet variant) {
-        StringBuilder sku = new StringBuilder(productCode);
+    private String generateUniqueSkuForVariant(String productCode, SanPhamChiTiet variant) {
+        StringBuilder skuBuilder = new StringBuilder(productCode);
 
-        // Add core attributes to SKU
-        if (variant.getCpu() != null && variant.getCpu().getMoTaCpu() != null) {
-            sku.append("-").append(variant.getCpu().getMoTaCpu().replaceAll("\\s+", "").toUpperCase());
-        }
-        if (variant.getRam() != null && variant.getRam().getMoTaRam() != null) {
-            sku.append("-").append(variant.getRam().getMoTaRam().replaceAll("\\s+", "").toUpperCase());
-        }
-        if (variant.getBoNho() != null && variant.getBoNho().getMoTaBoNho() != null) {
-            sku.append("-").append(variant.getBoNho().getMoTaBoNho().replaceAll("\\s+", "").toUpperCase());
-        }
-        if (variant.getMauSac() != null && variant.getMauSac().getMoTaMauSac() != null) {
-            sku.append("-").append(variant.getMauSac().getMoTaMauSac().replaceAll("\\s+", "").toUpperCase());
-        }
+        // Append attribute codes to the SKU base
+        if (variant.getCpu() != null) skuBuilder.append("-").append(variant.getCpu().getMaCpu());
+        if (variant.getRam() != null) skuBuilder.append("-").append(variant.getRam().getMaRam());
+        if (variant.getBoNho() != null) skuBuilder.append("-").append(variant.getBoNho().getMaBoNho());
+        if (variant.getMauSac() != null) skuBuilder.append("-").append(variant.getMauSac().getMaMauSac());
+        if (variant.getGpu() != null) skuBuilder.append("-").append(variant.getGpu().getMaGpu());
+        if (variant.getManHinh() != null) skuBuilder.append("-").append(variant.getManHinh().getMaManHinh());
 
-        return sku.toString();
-    }
+        String baseSku = skuBuilder.toString().replaceAll("[^a-zA-Z0-9-]", "").toUpperCase();
 
-    /**
-     * Generate unique SKU to avoid conflicts
-     * @param baseSku Base SKU
-     * @param incomingSkus Set of incoming SKUs
-     * @param existingVariants Set of existing variants
-     * @return Unique SKU
-     */
-    private String generateUniqueSku(String baseSku, Set<String> incomingSkus, Set<SanPhamChiTiet> existingVariants) {
+        // Find a unique SKU
+        String finalSku = baseSku;
         int counter = 1;
-
-        // Helper method to check if SKU exists (includes database check)
-        java.util.function.Predicate<String> skuExists = sku ->
-            incomingSkus.contains(sku) ||
-            existingVariants.stream().anyMatch(v -> v.getSku() != null && v.getSku().equals(sku)) ||
-            sanPhamChiTietRepository.existsBySku(sku);
-
-        // Start with base SKU
-        if (!skuExists.test(baseSku)) {
-            return baseSku;
+        while (sanPhamChiTietRepository.existsBySku(finalSku)) {
+            finalSku = baseSku + "-" + counter++;
         }
-
-        // Generate numbered variants
-        while (counter <= 999) {
-            String candidateSku = baseSku + "-" + String.format("%03d", counter);
-            if (!skuExists.test(candidateSku)) {
-                return candidateSku;
-            }
-            counter++;
-        }
-
-        // If numbered approach fails, use random suffix as fallback
-        return generateSkuWithRandomSuffix(baseSku, incomingSkus, existingVariants);
-    }
-
-    /**
-     * Generate SKU with random suffix as fallback when numbered approach fails
-     * @param baseSku Base SKU
-     * @param incomingSkus Set of incoming SKUs
-     * @param existingVariants Set of existing variants
-     * @return Unique SKU with random suffix
-     */
-    private String generateSkuWithRandomSuffix(String baseSku, Set<String> incomingSkus, Set<SanPhamChiTiet> existingVariants) {
-        java.security.SecureRandom random = new java.security.SecureRandom();
-        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-
-        // Helper method to check if SKU exists (includes database check)
-        java.util.function.Predicate<String> skuExists = sku ->
-            incomingSkus.contains(sku) ||
-            existingVariants.stream().anyMatch(v -> v.getSku() != null && v.getSku().equals(sku)) ||
-            sanPhamChiTietRepository.existsBySku(sku);
-
-        // Try up to 100 random suffixes
-        for (int attempt = 0; attempt < 100; attempt++) {
-            StringBuilder suffix = new StringBuilder();
-            for (int i = 0; i < 6; i++) {
-                suffix.append(chars.charAt(random.nextInt(chars.length())));
-            }
-
-            String candidateSku = baseSku + "-" + suffix.toString();
-            if (!skuExists.test(candidateSku)) {
-                return candidateSku;
-            }
-        }
-
-        throw new RuntimeException("Không thể tạo SKU duy nhất cho: " + baseSku + " sau 100 lần thử với suffix ngẫu nhiên");
+        return finalSku;
     }
 
     // Cập nhật sản phẩm với audit trail chi tiết

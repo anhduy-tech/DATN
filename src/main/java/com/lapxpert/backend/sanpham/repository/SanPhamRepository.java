@@ -23,4 +23,6 @@ public interface SanPhamRepository extends JpaRepository<SanPham, Long> {
                                 @Param("maSanPham") String maSanPham,
                                 @Param("moTa") String moTa);
 
+    boolean existsByMaSanPham(String maSanPham);
+
 }

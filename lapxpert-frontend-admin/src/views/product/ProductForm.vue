@@ -991,77 +991,6 @@ const formatCurrency = (amount) => {
   }).format(amount)
 }
 
-// SKU Generation and Deduplication Logic
-const generateBaseSku = (variant) => {
-  const productCode = productForm.value.maSanPham || 'SP'
-  const parts = [productCode]
-
-  // Add core attributes to SKU
-  if (variant.cpu?.moTaCpu) {
-    parts.push(variant.cpu.moTaCpu.replace(/\s+/g, '').toUpperCase().substring(0, 8))
-  }
-  if (variant.ram?.moTaRam) {
-    parts.push(variant.ram.moTaRam.replace(/\s+/g, '').toUpperCase().substring(0, 6))
-  }
-  if (variant.mauSac?.moTaMauSac) {
-    parts.push(variant.mauSac.moTaMauSac.replace(/\s+/g, '').toUpperCase().substring(0, 4))
-  }
-
-  return parts.join('-')
-}
-
-const checkSkuExists = async (sku) => {
-  try {
-    // Check against existing products in the store
-    const allProducts = productStore.products || []
-    for (const product of allProducts) {
-      if (product.sanPhamChiTiets) {
-        for (const variant of product.sanPhamChiTiets) {
-          if (variant.sku === sku) {
-            return true
-          }
-        }
-      }
-    }
-
-    // Check against current form variants
-    if (productForm.value.sanPhamChiTiets) {
-      for (const variant of productForm.value.sanPhamChiTiets) {
-        if (variant.sku === sku) {
-          return true
-        }
-      }
-    }
-
-    return false
-  } catch (error) {
-    console.warn('Error checking SKU existence:', error)
-    return false
-  }
-}
-
-const generateUniqueSku = async (baseSku) => {
-  let candidateSku = baseSku
-  let counter = 1
-
-  // Check if base SKU is available
-  if (!(await checkSkuExists(candidateSku))) {
-    return candidateSku
-  }
-
-  // Generate numbered variants until we find a unique one
-  while (counter <= 999) {
-    candidateSku = `${baseSku}-${String(counter).padStart(3, '0')}`
-    if (!(await checkSkuExists(candidateSku))) {
-      return candidateSku
-    }
-    counter++
-  }
-
-  // If we can't find a unique SKU after 999 attempts, throw an error
-  throw new Error(`Không thể tạo SKU duy nhất cho: ${baseSku}`)
-}
-
 const goBack = () => {
   router.push({ name: 'products' })
 }
@@ -1097,11 +1026,9 @@ const handleGenerateVariants = async () => {
 }
 
 const generateVariants = async () => {
-  const variants = []
-  const duplicateCount = ref(0)
-  const skuErrors = ref([])
+  const variantsToCreate = [];
+  const duplicateCount = ref(0);
 
-  // Create arrays for 6 core attributes, using [null] if empty to ensure at least one iteration
   const attributeArrays = {
     colors: selectedColors.value.length ? selectedColors.value : [null],
     cpus: selectedCpus.value.length ? selectedCpus.value : [null],
@@ -1109,9 +1036,8 @@ const generateVariants = async () => {
     gpus: selectedGpus.value.length ? selectedGpus.value : [null],
     storage: selectedStorage.value.length ? selectedStorage.value : [null],
     screens: selectedScreen.value.length ? selectedScreen.value : [null]
-  }
+  };
 
-  // Helper function to check if a variant with the same attributes already exists
   const variantExists = (newVariant) => {
     return productForm.value.sanPhamChiTiets?.some(existingVariant => {
       return (
@@ -1121,15 +1047,13 @@ const generateVariants = async () => {
         existingVariant.gpu?.id === newVariant.gpu?.id &&
         existingVariant.oCung?.id === newVariant.oCung?.id &&
         existingVariant.manHinh?.id === newVariant.manHinh?.id
-      )
-    })
-  }
+      );
+    });
+  };
 
-  // Generate all combinations using nested loops (simplified approach for better performance)
-  const generateCombinations = async (arrays, current = {}, index = 0) => {
-    const keys = Object.keys(arrays)
+  const generateCombinations = (arrays, current = {}, index = 0) => {
+    const keys = Object.keys(arrays);
     if (index === keys.length) {
-      // Create variant object
       const newVariant = {
         mauSac: current.colors,
         cpu: current.cpus,
@@ -1137,93 +1061,76 @@ const generateVariants = async () => {
         gpu: current.gpus,
         boNho: current.storage,
         manHinh: current.screens,
-        giaBan: 0, // Will be set individually for each variant
+        giaBan: 0,
         giaKhuyenMai: null,
         trangThai: true,
         hinhAnh: [],
-        serialNumbers: [] // Initialize empty serial numbers array
-      }
+        serialNumbers: [],
+        sku: null // Let backend generate SKU
+      };
 
-      // Check for duplicates before adding
       if (variantExists(newVariant)) {
-        duplicateCount.value++
+        duplicateCount.value++;
       } else {
-        // Generate unique SKU for the variant
-        try {
-          const baseSku = generateBaseSku(newVariant)
-          const uniqueSku = await generateUniqueSku(baseSku)
-          newVariant.sku = uniqueSku
-          variants.push(newVariant)
-        } catch (error) {
-          console.error('Error generating SKU:', error)
-          skuErrors.value.push(error.message)
-          // Add variant without SKU - backend will handle it
-          variants.push(newVariant)
-        }
+        variantsToCreate.push(newVariant);
       }
-      return
+      return;
     }
 
-    const key = keys[index]
+    const key = keys[index];
     for (const value of arrays[key]) {
-      await generateCombinations(arrays, { ...current, [key]: value }, index + 1)
+      generateCombinations(arrays, { ...current, [key]: value }, index + 1);
     }
+  };
+
+  generateCombinations(attributeArrays);
+
+  if (variantsToCreate.length === 0) {
+    if (duplicateCount.value > 0) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Cảnh báo',
+        detail: `Tất cả ${duplicateCount.value} biến thể đã tồn tại. Không có biến thể mới nào được tạo.`,
+        life: 4000
+      });
+    }
+    return;
   }
 
-  await generateCombinations(attributeArrays)
+  // No longer calling backend for SKU generation here
+  const newVariants = variantsToCreate;
 
-  // Add new variants to existing ones
-  if (variants.length > 0) {
+  if (newVariants.length > 0) {
     if (productForm.value.sanPhamChiTiets && productForm.value.sanPhamChiTiets.length > 0) {
-      productForm.value.sanPhamChiTiets.push(...variants)
+      productForm.value.sanPhamChiTiets.push(...newVariants);
     } else {
-      productForm.value.sanPhamChiTiets = variants
+      productForm.value.sanPhamChiTiets = newVariants;
     }
 
-    // Ensure variant image previews array is properly sized while preserving existing values
-    const currentLength = variantImagePreviews.value.length
-    const requiredLength = productForm.value.sanPhamChiTiets.length
-
+    const currentLength = variantImagePreviews.value.length;
+    const requiredLength = productForm.value.sanPhamChiTiets.length;
     if (requiredLength > currentLength) {
-      // Extend array with null values for new variants while preserving existing previews
-      const extensionArray = Array.from({ length: requiredLength - currentLength }, () => null)
-      variantImagePreviews.value.push(...extensionArray)
+      const extensionArray = Array.from({ length: requiredLength - currentLength }, () => null);
+      variantImagePreviews.value.push(...extensionArray);
     }
-  }
 
-  // Show appropriate toast messages
-  if (skuErrors.value.length > 0) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Cảnh báo SKU',
-      detail: `Có ${skuErrors.value.length} lỗi tạo SKU. Backend sẽ xử lý tự động.`,
-      life: 4000
-    })
-  }
-
-  if (variants.length > 0 && duplicateCount.value > 0) {
-    toast.add({
-      severity: 'info',
-      summary: 'Thông báo',
-      detail: `Đã tạo ${variants.length} biến thể mới với SKU duy nhất. ${duplicateCount.value} biến thể trùng lặp đã được bỏ qua.`,
-      life: 4000
-    })
-  } else if (variants.length > 0) {
     toast.add({
       severity: 'success',
       summary: 'Thành công',
-      detail: `Đã tạo ${variants.length} biến thể với SKU duy nhất`,
+      detail: `Đã tạo ${newVariants.length} biến thể mới.`,
       life: 3000
-    })
-  } else if (duplicateCount.value > 0) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Cảnh báo',
-      detail: `Tất cả ${duplicateCount.value} biến thể đã tồn tại. Không có biến thể mới nào được tạo.`,
-      life: 4000
-    })
+    });
+
+    if (duplicateCount.value > 0) {
+      toast.add({
+        severity: 'info',
+        summary: 'Thông báo',
+        detail: `${duplicateCount.value} biến thể trùng lặp đã được bỏ qua.`,
+        life: 4000
+      });
+    }
   }
-}
+};
 
 const removeVariant = (index) => {
   const variant = productForm.value.sanPhamChiTiets[index]
