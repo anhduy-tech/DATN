@@ -2,36 +2,36 @@
 # Core dependencies for Vietnamese embedding model and GitHub AI Mistral Medium 3 (25.05) integration
 
 # Database connectivity
-psycopg2-binary==2.9.9
+psycopg2-binary
 
 # Vietnamese text processing and embeddings
-sentence-transformers==3.3.1
-pyvi==0.1.1
+sentence-transformers
+pyvi
 
 # FastAPI and web framework
-fastapi==0.115.6
-uvicorn[standard]==0.32.1
+fastapi
+uvicorn[standard]
 
 # AI Inference SDKs
-azure-ai-inference==1.0.0b9  # GitHub AI (Mistral Medium 3) integration
+azure-ai-inference # GitHub AI (Mistral Medium 3) integration
 
 # HTTP client for async operations (required by azure-ai-inference)
-aiohttp==3.10.11
+aiohttp
 
 # Async database support
-asyncpg==0.30.0
+asyncpg
 
 # Vector database support
-pgvector==0.4.1
+pgvector
 
 # Utilities
-tqdm==4.67.1
-numpy==2.2.1
-torch==2.5.1
+tqdm
+numpy
+torch
 
 # Development and testing
-pytest==8.3.4
-httpx>=0.27.0,<0.28.0
+pytest
+httpx
 
 # For loading environment variables from .env files
-python-dotenv==1.0.1
+python-dotenv
