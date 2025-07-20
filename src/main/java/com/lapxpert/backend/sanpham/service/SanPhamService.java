@@ -157,7 +157,7 @@ public class SanPhamService extends BusinessEntityService<SanPham, Long, SanPham
 
     @Transactional(readOnly = true)
     public List<SanPhamDto> getActiveProducts() {
-        List<SanPham> entities = sanPhamRepository.findAllByTrangThai(true);
+        List<SanPham> entities = sanPhamRepository.findActiveProductsWithAvailableStock();
         List<SanPhamDto> dtos = sanPhamMapper.toDtos(entities);
 
         // Apply promotional pricing from DotGiamGia campaigns to all product variants

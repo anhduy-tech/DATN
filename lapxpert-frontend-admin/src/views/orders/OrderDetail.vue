@@ -1716,13 +1716,6 @@ const confirmStatusUpdate = async () => {
 
       // Reload order data to get latest state
       await refreshData()
-
-      toast.add({
-        severity: 'success',
-        summary: 'Thành công',
-        detail: `Đã cập nhật trạng thái thành ${selectedStatusUpdate.value?.label}`,
-        life: 3000
-      })
     }
   } catch (err) {
     console.error('Error updating order status:', err)

@@ -10,6 +10,8 @@ import java.util.List;
 public interface SanPhamRepository extends JpaRepository<SanPham, Long> {
     List<SanPham> findAllByTrangThai(Boolean trangThai);
 
+    Long countByTrangThai(Boolean trangThai);
+
     @Query(value = "SELECT s.ma_san_pham FROM san_pham s WHERE s.ma_san_pham LIKE 'SP%' ORDER BY s.id DESC LIMIT 1", nativeQuery = true)
     String findLastMaSanPham();
 
@@ -24,5 +26,21 @@ public interface SanPhamRepository extends JpaRepository<SanPham, Long> {
                                 @Param("moTa") String moTa);
 
     boolean existsByMaSanPham(String maSanPham);
+
+    /**
+     * Finds all active products that have at least one available serial number across all their variants.
+     * This is used for displaying products on the client-side (e.g., home page).
+     *
+     * @return A list of SanPham entities that are active and have available stock.
+     */
+    @Query(value = """
+        SELECT DISTINCT sp.* FROM san_pham sp
+        JOIN san_pham_chi_tiet spct ON sp.id = spct.san_pham_id
+        LEFT JOIN serial_number sn ON spct.id = sn.san_pham_chi_tiet_id AND sn.trang_thai = 'AVAILABLE'
+        WHERE sp.trang_thai = true
+        GROUP BY sp.id
+        HAVING COUNT(sn.id) > 0
+        """, nativeQuery = true)
+    List<SanPham> findActiveProductsWithAvailableStock();
 
 }

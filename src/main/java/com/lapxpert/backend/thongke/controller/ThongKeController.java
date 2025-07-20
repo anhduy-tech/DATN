@@ -150,26 +150,6 @@ public class ThongKeController {
         }
     }
 
-    /**
-     * Get recent orders
-     * @param soLuong Number of recent orders to return (default: 10)
-     * @return List of recent orders
-     */
-    @GetMapping("/don-hang/gan-day")
-    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF')")
-    public ResponseEntity<List<HoaDon>> layDonHangGanDay(
-            @RequestParam(defaultValue = "10") Integer soLuong) {
-        
-        log.debug("Getting {} recent orders", soLuong);
-        
-        try {
-            List<HoaDon> result = thongKeService.layDonHangGanDay(soLuong);
-            return ResponseEntity.ok(result);
-        } catch (Exception e) {
-            log.error("Error getting recent orders", e);
-            return ResponseEntity.internalServerError().build();
-        }
-    }
 
     // ==================== SAN PHAM (PRODUCT) STATISTICS ====================
 

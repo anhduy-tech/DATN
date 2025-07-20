@@ -371,7 +371,6 @@ const placeOrder = async () => {
                         <div v-if="checkoutItems.length > 0">
                             <div v-for="item in checkoutItems" :key="item.id" class="flex justify-between items-center py-2 border-b last:border-b-0">
                                 <div class="flex items-center">
-                                    <img :src="item.image || 'https://via.placeholder.com/50'" :alt="item.name" class="w-12 h-12 object-contain rounded-md mr-4" />
                                     <div>
                                         <p class="font-semibold">{{ item.name }}</p>
                                         <p class="text-sm text-gray-600">Số lượng: {{ item.quantity }}</p>
