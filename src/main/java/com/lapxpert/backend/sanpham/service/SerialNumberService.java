@@ -1479,4 +1479,23 @@ public class SerialNumberService {
             serialNumber.getNhaCungCap() != null ? serialNumber.getNhaCungCap() : ""
         );
     }
+
+    public Map<String, Object> checkAvailability(List<Long> serialNumberIds) {
+        List<SerialNumber> serialNumbers = serialNumberRepository.findAllById(serialNumberIds);
+        List<String> unavailableSerials = new ArrayList<>();
+        boolean allAvailable = true;
+
+        for (SerialNumber serialNumber : serialNumbers) {
+            if (!serialNumber.isAvailable()) {
+                allAvailable = false;
+                unavailableSerials.add(serialNumber.getSerialNumberValue());
+            }
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("available", allAvailable);
+        result.put("unavailableSerials", unavailableSerials);
+
+        return result;
+    }
 }

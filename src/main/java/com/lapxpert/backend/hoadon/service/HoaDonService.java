@@ -119,8 +119,16 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
         // Step 1: Pre-transaction validation
         validateOrderCreationRequest(hoaDonDto, currentUser);
 
-        // Step 2: Reserve inventory with enhanced coordination
-        List<Long> reservedItemIds = reserveInventoryWithCoordination(hoaDonDto, orderChannel, tempOrderId);
+        // Step 2: Reserve inventory ONLY for TAI_QUAY orders
+        List<Long> reservedItemIds = new ArrayList<>(); // Initialize with an empty list
+        if (hoaDonDto.getLoaiHoaDon() == LoaiHoaDon.TAI_QUAY) {
+            log.info("TAI_QUAY order detected, proceeding with serial number reservation.");
+            reservedItemIds = reserveInventoryWithCoordination(hoaDonDto, orderChannel, tempOrderId);
+        } else {
+            log.info("ONLINE order detected, skipping automatic serial number reservation at creation time.");
+            // For ONLINE orders, we do not reserve inventory upfront.
+            // Serial number assignment will be handled later in the fulfillment process.
+        }
 
         try {
             // Step 3: Create order entity with enhanced transaction coordination

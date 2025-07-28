@@ -1,96 +1,61 @@
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed } from 'vue';
 import { useCartStore } from '@/stores/cartStore';
-import { useOrderStore } from '@/stores/orderStore'; // Import orderStore
 import { useRouter } from 'vue-router';
-import { useToast } from 'primevue/usetoast'; // Import useToast
+import { useToast } from 'primevue/usetoast';
 
 const cartStore = useCartStore();
-const orderStore = useOrderStore(); // Initialize orderStore
 const router = useRouter();
-const toast = useToast(); // Initialize toast
+const toast = useToast();
+
 
 const cartItems = computed(() => cartStore.items);
-const selectedItems = ref(new Set()); // To store serialIds of selected items
-console.log('selectedItems initialized:', selectedItems.value);
-
-// Watch for changes in cartItems and update selectedItems if an item is removed
-watch(cartItems, (newItems, oldItems) => {
-    console.log('Cart items changed. New:', newItems.length, 'Old:', oldItems.length);
-    const newSerialIds = new Set(newItems.map(item => item.serialId));
-    // Remove items from selectedItems if their serialId is no longer in cartItems
-    selectedItems.value.forEach(selectedSerialId => {
-        if (!newSerialIds.has(selectedSerialId)) {
-            selectedItems.value.delete(selectedSerialId);
-            console.log('Removed from selection due to cart removal:', selectedSerialId);
-        }
-    });
-}, { deep: true });
+const selectedItems = ref([]); // To store variantIds of selected items
 
 const formatCurrency = (value) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value);
 };
 
+const updateQuantity = (variantId, quantity) => {
+    cartStore.updateQuantity(variantId, quantity);
+};
+
+const removeItem = (variantId) => {
+    cartStore.removeItem(variantId);
+    const index = selectedItems.value.indexOf(variantId);
+    if (index > -1) {
+        selectedItems.value.splice(index, 1);
+    }
+    toast.add({ severity: 'info', summary: 'Thông báo', detail: 'Đã xóa sản phẩm khỏi giỏ hàng.', life: 3000 });
+};
+
 const toggleSelectItem = (item) => {
-    if (selectedItems.value.has(item.serialId)) {
-        selectedItems.value.delete(item.serialId);
-        console.log('Item deselected:', item.serialId, 'Current selected items count:', selectedItems.value.size);
+    const index = selectedItems.value.indexOf(item.variantId);
+    if (index > -1) {
+        selectedItems.value.splice(index, 1);
     } else {
-        if (selectedItems.value.size < 5) { // Limit to 5 selections
-            selectedItems.value.add(item.serialId);
-            console.log('Item selected:', item.serialId, 'Current selected items count:', selectedItems.value.size);
-        } else {
-            toast.add({
-                severity: 'warn',
-                summary: 'Cảnh báo',
-                detail: 'Bạn chỉ có thể chọn tối đa 5 sản phẩm để mua cùng lúc.',
-                life: 3000
-            });
-            console.log('Selection limit reached. Item not selected:', item.serialId);
-        }
+        selectedItems.value.push(item.variantId);
     }
 };
 
 const isItemSelected = (item) => {
-    return selectedItems.value.has(item.serialId);
+    return selectedItems.value.includes(item.variantId);
 };
 
-const createBatchOrders = async () => {
-    if (selectedItems.value.size === 0) {
-        toast.add({
-            severity: 'warn',
-            summary: 'Cảnh báo',
-            detail: 'Vui lòng chọn ít nhất một sản phẩm để tạo đơn hàng.',
-            life: 3000
-        });
+const proceedToCheckout = () => {
+    if (selectedItems.value.length === 0) {
+        toast.add({ severity: 'warn', summary: 'Cảnh báo', detail: 'Vui lòng chọn ít nhất một sản phẩm để thanh toán.', life: 3000 });
         return;
     }
 
-    if (selectedItems.value.size > 5) {
-        toast.add({
-            severity: 'warn',
-            summary: 'Cảnh báo',
-            detail: 'Bạn chỉ có thể tạo tối đa 5 đơn hàng cùng lúc.',
-            life: 3000
-        });
-        return;
-    }
-
-    // Group selected items by product to create individual orders
-    const itemsToCheckout = cartItems.value.filter(item => selectedItems.value.has(item.serialId));
+    const itemsToCheckout = cartItems.value.filter(item => selectedItems.value.includes(item.variantId));
     cartStore.setSelectedItemsForCheckout(itemsToCheckout);
 
-    // Remove items from cart after they are selected for checkout
-    selectedItems.value.forEach(item => {
-        cartStore.removeItem(item.serialId);
-    });
-    selectedItems.value = new Set(); // Clear selected items after moving to checkout
-
-    router.push('/shop/checkout'); // Navigate to the checkout page
+    router.push('/shop/checkout');
 };
 
-const isCreateOrderButtonDisabled = computed(() => {
-    return !selectedItems.value || selectedItems.value.size === 0 || selectedItems.value.size > 5;
+const isCheckoutButtonDisabled = computed(() => {
+    return selectedItems.value.length === 0;
 });
 
 const continueShopping = () => {
@@ -106,26 +71,31 @@ const continueShopping = () => {
             </template>
             <template #content>
                 <div v-if="cartItems.length > 0">
-                    <div class="border-b mb-4 pb-4" v-for="item in cartItems" :key="item.serialId">
-                        <div class="grid grid-cols-12 gap-4 items-center cursor-pointer p-2"
-                             :class="{ 'border-2 border-blue-500 rounded-lg': isItemSelected(item) }"
-                             @click="toggleSelectItem(item)">
+                    <div class="border-b mb-4 pb-4" v-for="item in cartItems" :key="item.variantId">
+                        <div class="grid grid-cols-12 gap-4 items-center p-2">
+                            <!-- Checkbox -->
+                            <div class="col-span-1 flex justify-center">
+                                <Checkbox v-model="selectedItems" :inputId="item.variantId.toString()" :value="item.variantId" />
+                            </div>
                             <!-- Product Image -->
                             <div class="col-span-2">
                                 <img :src="item.image || 'https://via.placeholder.com/150'" :alt="item.name" class="w-24 h-24 object-contain rounded-md" />
                             </div>
-                            <!-- Product Name & Serial -->
-                            <div class="col-span-6">
+                            <!-- Product Name -->
+                            <div class="col-span-4">
                                 <h3 class="font-semibold">{{ item.name }}</h3>
-                                <p class="text-sm text-gray-500">Serial: {{ item.serialId }}</p>
+                            </div>
+                            <!-- Quantity -->
+                            <div class="col-span-2">
+                                <InputNumber v-model="item.quantity" @input="updateQuantity(item.variantId, $event.value)" showButtons buttonLayout="horizontal" :min="1" />
                             </div>
                             <!-- Product Price -->
                             <div class="col-span-2">
-                                <p>{{ formatCurrency(item.price) }}</p>
+                                <p>{{ formatCurrency(item.price * item.quantity) }}</p>
                             </div>
                             <!-- Remove Button -->
-                            <div class="col-span-2 text-right">
-                                <Button icon="pi pi-trash" severity="danger" text rounded @click.stop="cartStore.removeItem(item.serialId)" />
+                            <div class="col-span-1 text-right">
+                                <Button icon="pi pi-trash" severity="danger" text rounded @click="removeItem(item.variantId)" />
                             </div>
                         </div>
                     </div>
@@ -136,10 +106,10 @@ const continueShopping = () => {
                         <div class="mt-4 flex justify-end gap-4">
                             <Button label="Tiếp tục mua sắm" severity="secondary" outlined @click="continueShopping" />
                             <Button
-                                label="Tạo đơn hàng từ mục đã chọn"
+                                label="Tiến hành thanh toán"
                                 icon="pi pi-shopping-cart"
-                                @click="createBatchOrders"
-                                :disabled="isCreateOrderButtonDisabled"
+                                @click="proceedToCheckout"
+                                :disabled="isCheckoutButtonDisabled"
                             />
                         </div>
                     </div>

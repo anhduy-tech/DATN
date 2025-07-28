@@ -139,13 +139,21 @@
           <p class="text-surface-700">{{ product.moTa || 'Chưa có mô tả' }}</p>
         </div>
 
+        <!-- Quantity Input -->
+        <div v-if="selectedVariant">
+          <label for="quantity" class="text-sm font-medium text-surface-600">Số lượng:</label>
+          <InputNumber v-model="quantity" inputId="quantity" :min="1" :max="availableInventory" showButtons buttonLayout="horizontal" class="mt-2" />
+          <p v-if="availableInventory > 0" class="text-sm text-surface-500 mt-1">Có sẵn: {{ availableInventory }} sản phẩm</p>
+          <p v-else class="text-sm text-red-500 mt-1">Sản phẩm này đã hết hàng</p>
+        </div>
+
         <!-- Call to Action -->
         <div class="flex gap-4">
           <Button
             label="Thêm vào giỏ hàng"
             icon="pi pi-shopping-cart"
             class="w-full"
-            :disabled="!selectedVariant"
+            :disabled="!selectedVariant || availableInventory === 0"
             @click="addToCart"
           />
           <Button
@@ -153,7 +161,7 @@
             icon="pi pi-check"
             severity="success"
             class="w-full"
-            :disabled="!selectedVariant"
+            :disabled="!selectedVariant || availableInventory === 0"
             @click="buyNow"
           />
         </div>
@@ -219,9 +227,9 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import { useProductStore } from '@/stores/productstore'
-import storageApi from '@/apis/storage'
-import serialNumberApi from '@/apis/serialNumberApi'
 import { useCartStore } from '@/stores/cartStore'
+import storageApi from '@/apis/storage'
+import inventoryApi from '@/apis/inventoryApi';
 
 const route = useRoute()
 const router = useRouter()
@@ -236,7 +244,8 @@ const error = ref(null)
 const selectedVariant = ref(null)
 const selectedImage = ref(null)
 const imageUrlCache = ref(new Map())
-const availableSerialNumbers = ref([])
+const quantity = ref(1)
+const availableInventory = ref(0);
 
 // Watch for route param changes to reload product
 watch(() => route.params.id, async (newId, oldId) => {
@@ -340,33 +349,37 @@ const loadProduct = async () => {
   }
 }
 
-const fetchAvailableSerialNumbers = async (variantId) => {
+const fetchAvailableInventory = async (variantId) => {
   if (!variantId) {
-    availableSerialNumbers.value = []
-    return
+    availableInventory.value = 0;
+    return;
   }
   try {
-    const serials = await serialNumberApi.getSerialNumbersByVariant(variantId)
-    availableSerialNumbers.value = serials.filter(s => s.trangThai === 'AVAILABLE')
+    const response = await inventoryApi.getAvailableQuantity(variantId);
+    if (response.success) {
+      availableInventory.value = response.data.availableQuantity || 0;
+    } else {
+      availableInventory.value = 0;
+    }
   } catch (err) {
-    console.error('Error fetching serial numbers:', err)
-    availableSerialNumbers.value = []
+    console.error('Error fetching inventory:', err);
+    availableInventory.value = 0;
     toast.add({
       severity: 'error',
       summary: 'Lỗi',
-      detail: 'Không thể tải serial numbers cho biến thể này.',
+      detail: 'Không thể tải số lượng tồn kho cho phiên bản này.',
       life: 3000
-    })
+    });
   }
-}
+};
 
 watch(selectedVariant, (newVariant) => {
   if (newVariant) {
-    fetchAvailableSerialNumbers(newVariant.id)
+    fetchAvailableInventory(newVariant.id);
   } else {
-    availableSerialNumbers.value = []
+    availableInventory.value = 0;
   }
-}, { immediate: true })
+}, { immediate: true });
 
 const refreshData = async () => {
   const productId = route.params.id
@@ -400,87 +413,46 @@ const refreshData = async () => {
 
 const addToCart = () => {
   if (!selectedVariant.value) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Cảnh báo',
-      detail: 'Vui lòng chọn một phiên bản sản phẩm để thêm vào giỏ hàng.',
-      life: 3000
-    })
-    return
+    toast.add({ severity: 'warn', summary: 'Cảnh báo', detail: 'Vui lòng chọn một phiên bản sản phẩm.', life: 3000 });
+    return;
   }
-
-  // Filter out serial numbers already in the cart
-  const availableAndNotInCartSerials = availableSerialNumbers.value.filter(
-    (serial) => !cartStore.items.some((cartItem) => cartItem.serialId === serial.id)
-  );
-
-  if (availableAndNotInCartSerials.length === 0) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Cảnh báo',
-      detail: 'Không có serial number khả dụng nào cho biến thể này hoặc tất cả đã có trong giỏ hàng.',
-      life: 3000
-    })
-    return
+  if (quantity.value > availableInventory.value) {
+    toast.add({ severity: 'warn', summary: 'Cảnh báo', detail: `Số lượng tồn kho không đủ. Chỉ còn ${availableInventory.value} sản phẩm.`, life: 3000 });
+    return;
   }
-
-  const serialToAdd = availableAndNotInCartSerials[0]; // Take the first available and not-in-cart serial
 
   const itemToAdd = {
     productId: product.value.id,
     variantId: selectedVariant.value.id,
-    serialId: serialToAdd.id, // Use the serial number ID as the unique identifier
     name: product.value.tenSanPham + ' - ' + selectedVariant.value.sku,
     price: selectedVariant.value.giaKhuyenMai || selectedVariant.value.giaBan,
-    image: getProductImage(product.value.hinhAnh?.[0]) // Use the first product image
-  }
+    image: getProductImage(product.value.hinhAnh?.[0]),
+    quantity: quantity.value,
+  };
 
-  cartStore.addItem(itemToAdd)
-  toast.add({
-    severity: 'success',
-    summary: 'Thành công',
-    detail: `Đã thêm ${itemToAdd.name} (Serial: ${serialToAdd.serialNumberValue || serialToAdd.serialNumber}) vào giỏ hàng.`,
-    life: 3000
-  })
-
-  // Update the local availableSerialNumbers to reflect the one just added
-  availableSerialNumbers.value = availableSerialNumbers.value.filter(s => s.id !== serialToAdd.id)
-}
+  cartStore.addItem(itemToAdd);
+  toast.add({ severity: 'success', summary: 'Thành công', detail: `Đã thêm ${quantity.value} sản phẩm vào giỏ hàng.`, life: 3000 });
+};
 
 const buyNow = () => {
   if (!selectedVariant.value) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Cảnh báo',
-      detail: 'Vui lòng chọn một phiên bản sản phẩm để mua ngay.',
-      life: 3000
-    })
-    return
+    toast.add({ severity: 'warn', summary: 'Cảnh báo', detail: 'Vui lòng chọn một phiên bản sản phẩm.', life: 3000 });
+    return;
   }
-
-  if (availableSerialNumbers.value.length === 0) {
-    toast.add({
-      severity: 'warn',
-      summary: 'Cảnh báo',
-      detail: 'Không có serial number nào khả dụng cho biến thể này.',
-      life: 3000
-    })
-    return
+  if (quantity.value > availableInventory.value) {
+    toast.add({ severity: 'warn', summary: 'Cảnh báo', detail: `Số lượng tồn kho không đủ. Chỉ còn ${availableInventory.value} sản phẩm.`, life: 3000 });
+    return;
   }
-
-  const serialToBuy = availableSerialNumbers.value[0] // Take the first available serial
 
   router.push({
-      name: 'shop-checkout',
-      query: {
-        productId: product.value.id,
-        variantId: selectedVariant.value.id,
-        quantity: 1, // Default quantity to 1 for "Buy Now"
-        serialNumberId: serialToBuy.id,
-        serialNumberValue: serialToBuy.serialNumberValue || serialToBuy.serialNumber // Pass the serial number ID and value
-      }
-    })
-}
+    name: 'shop-checkout',
+    query: {
+      productId: product.value.id,
+      variantId: selectedVariant.value.id,
+      quantity: quantity.value,
+    }
+  });
+};
 
 const goBack = () => {
   router.push({ name: 'products' })
