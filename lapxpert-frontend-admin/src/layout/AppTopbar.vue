@@ -48,31 +48,16 @@ const { toggleMenu, toggleDarkMode, isDarkTheme } = useLayout()
           </g>
         </svg> -->
 
-        <svg
-          version="1.0"
-          xmlns="http://www.w3.org/2000/svg"
-          width="1000.000000pt"
-          height="1000.000000pt"
-          viewBox="0 0 1000.000000 1000.000000"
-          preserveAspectRatio="xMidYMid meet"
-        >
-          <g
-            transform="translate(0.000000,1000.000000) scale(0.100000,-0.100000)"
-            fill="#000000"
-            stroke="none"
-          >
-            <path
-              fill="var(--primary-color)"
-              d="M4830 9689 c-495 -37 -940 -138 -1390 -316 -185 -73 -440 -194 -574
+        <svg version="1.0" xmlns="http://www.w3.org/2000/svg" width="1000.000000pt" height="1000.000000pt"
+          viewBox="0 0 1000.000000 1000.000000" preserveAspectRatio="xMidYMid meet">
+          <g transform="translate(0.000000,1000.000000) scale(0.100000,-0.100000)" fill="#000000" stroke="none">
+            <path fill="var(--primary-color)" d="M4830 9689 c-495 -37 -940 -138 -1390 -316 -185 -73 -440 -194 -574
 -271 -84 -49 -91 -52 -141 -46 -95 11 -160 -29 -186 -115 -18 -60 -4 -109 45
 -157 66 -67 148 -72 219 -13 25 21 41 45 50 77 12 41 21 51 78 86 82 51 321
 169 471 235 251 108 659 231 935 280 452 81 938 93 1387 36 108 -14 109 -15
 142 -54 97 -113 277 -60 291 86 9 92 -53 171 -143 181 -34 3 -56 -1 -100 -23
--55 -27 -58 -27 -143 -16 -276 37 -673 50 -941 30z"
-            />
-            <path
-              fill="var(--primary-color)"
-              d="M6875 9391 c-121 -62 -120 -232 1 -291 45 -22 93 -25 138 -9 28 10
+-55 -27 -58 -27 -143 -16 -276 37 -673 50 -941 30z" />
+            <path fill="var(--primary-color)" d="M6875 9391 c-121 -62 -120 -232 1 -291 45 -22 93 -25 138 -9 28 10
 40 7 116 -29 247 -118 574 -328 825 -528 755 -604 1300 -1451 1535 -2384 58
 -229 120 -594 120 -706 0 -31 -3 -34 -29 -34 -85 0 -228 -96 -272 -182 l-19
 -38 -269 0 -268 0 -7 108 c-22 336 -105 710 -231 1037 l-56 144 25 38 c39 59
@@ -126,40 +111,27 @@ l-102 -41 -44 17 c-53 20 -125 14 -163 -13 -37 -28 -71 -91 -71 -133 0 -55 38
 1661 -905 427 -533 617 -1261 505 -1935 -153 -927 -842 -1702 -1739 -1954
 -752 -211 -1520 -70 -2152 394 -137 101 -398 366 -502 510 -238 329 -385 686
 -446 1080 -23 144 -31 489 -15 632 50 462 241 923 531 1283 300 371 753 675
-1200 803 146 42 285 72 414 87 137 16 414 18 543 5z"
-            />
-            <path
-              fill="var(--primary-color)"
-              d="M4914 8640 c-492 -34 -975 -168 -1409 -390 -82 -43 -162 -80 -177
+1200 803 146 42 285 72 414 87 137 16 414 18 543 5z" />
+            <path fill="var(--primary-color)" d="M4914 8640 c-492 -34 -975 -168 -1409 -390 -82 -43 -162 -80 -177
 -84 -37 -9 -88 -54 -104 -93 -40 -95 21 -208 123 -229 45 -9 109 13 146 50 66
 66 339 195 592 281 195 66 381 111 585 142 160 25 200 27 475 27 337 0 431 -9
 709 -69 175 -37 444 -121 557 -172 l66 -31 5 -58 c5 -78 45 -162 105 -222 56
 -55 114 -85 200 -102 125 -25 266 31 352 140 54 68 76 137 75 230 -2 100 -31
 174 -95 245 -126 137 -327 160 -484 57 l-30 -20 -95 39 c-191 78 -458 158
--685 204 -227 46 -663 72 -911 55z"
-            />
-            <path
-              fill="var(--primary-color)"
-              d="M9563 4390 c-80 -48 -101 -163 -45 -240 l20 -26 -48 -189 c-78 -309
+-685 204 -227 46 -663 72 -911 55z" />
+            <path fill="var(--primary-color)" d="M9563 4390 c-80 -48 -101 -163 -45 -240 l20 -26 -48 -189 c-78 -309
 -192 -614 -338 -904 -73 -145 -80 -155 -112 -164 -116 -30 -163 -155 -97 -256
 46 -70 161 -92 226 -44 54 41 66 69 67 156 0 81 1 83 72 224 155 307 280 645
-363 978 39 158 44 171 72 190 95 62 93 208 -3 272 -44 30 -131 32 -177 3z"
-            />
-            <path
-              fill="var(--primary-color)"
-              d="M7095 2383 c-16 -8 -46 -33 -65 -54 -64 -70 -398 -255 -640 -354
+363 978 39 158 44 171 72 190 95 62 93 208 -3 272 -44 30 -131 32 -177 3z" />
+            <path fill="var(--primary-color)" d="M7095 2383 c-16 -8 -46 -33 -65 -54 -64 -70 -398 -255 -640 -354
 -197 -81 -415 -145 -494 -145 -97 0 -166 -69 -166 -167 0 -126 121 -196 242
 -140 29 13 78 30 108 37 273 63 690 247 995 437 72 45 142 85 157 88 36 9 85
-65 97 113 12 41 1 98 -27 139 -36 56 -144 80 -207 46z"
-            />
-            <path
-              fill="var(--primary-color)"
-              d="M2524 1391 c-67 -41 -98 -122 -75 -194 26 -78 132 -135 201 -109 21
+65 97 113 12 41 1 98 -27 139 -36 56 -144 80 -207 46z" />
+            <path fill="var(--primary-color)" d="M2524 1391 c-67 -41 -98 -122 -75 -194 26 -78 132 -135 201 -109 21
 8 34 5 65 -14 496 -306 1091 -528 1668 -624 186 -30 466 -60 567 -60 48 0 60
 -4 81 -26 114 -124 324 -10 279 151 -35 123 -181 165 -272 78 l-27 -26 -143 6
 c-320 15 -693 83 -1053 192 -277 84 -693 270 -945 423 -80 48 -95 62 -101 88
--9 49 -46 100 -83 118 -47 22 -123 21 -162 -3z"
-            />
+-9 49 -46 100 -83 118 -47 22 -123 21 -162 -3z" />
           </g>
         </svg>
 
@@ -173,35 +145,28 @@ c-320 15 -693 83 -1053 192 -277 84 -693 270 -945 423 -80 48 -95 62 -101 88
           <i :class="['pi', { 'pi-moon': isDarkTheme, 'pi-sun': !isDarkTheme }]"></i>
         </button>
         <div class="relative">
-          <button
-            v-styleclass="{
-              selector: '@next',
-              enterFromClass: 'hidden',
-              enterActiveClass: 'animate-scalein',
-              leaveToClass: 'hidden',
-              leaveActiveClass: 'animate-fadeout',
-              hideOnOutsideClick: true,
-            }"
-            type="button"
-            class="layout-topbar-action layout-topbar-action-highlight"
-          >
+          <button v-styleclass="{
+            selector: '@next',
+            enterFromClass: 'hidden',
+            enterActiveClass: 'animate-scalein',
+            leaveToClass: 'hidden',
+            leaveActiveClass: 'animate-fadeout',
+            hideOnOutsideClick: true,
+          }" type="button" class="layout-topbar-action layout-topbar-action-highlight">
             <i class="pi pi-palette"></i>
           </button>
           <AppConfigurator />
         </div>
       </div>
 
-      <button
-        class="layout-topbar-menu-button layout-topbar-action"
-        v-styleclass="{
-          selector: '@next',
-          enterFromClass: 'hidden',
-          enterActiveClass: 'animate-scalein',
-          leaveToClass: 'hidden',
-          leaveActiveClass: 'animate-fadeout',
-          hideOnOutsideClick: true,
-        }"
-      >
+      <button class="layout-topbar-menu-button layout-topbar-action" v-styleclass="{
+        selector: '@next',
+        enterFromClass: 'hidden',
+        enterActiveClass: 'animate-scalein',
+        leaveToClass: 'hidden',
+        leaveActiveClass: 'animate-fadeout',
+        hideOnOutsideClick: true,
+      }">
         <i class="pi pi-ellipsis-v"></i>
       </button>
 
@@ -215,11 +180,7 @@ c-320 15 -693 83 -1053 192 -277 84 -693 270 -945 423 -80 48 -95 62 -101 88
             <i class="pi pi-inbox"></i>
             <span>Messages</span>
           </button>
-          <button
-            type="button"
-            class="layout-topbar-action text-red-500 hover:text-red-600"
-            @click="handleLogout"
-          >
+          <button type="button" class="layout-topbar-action text-red-500 hover:text-red-600" @click="handleLogout">
             <i class="pi pi-sign-out"></i>
             <span>Logout</span>
           </button>
