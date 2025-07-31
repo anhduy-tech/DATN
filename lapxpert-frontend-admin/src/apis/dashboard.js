@@ -71,8 +71,11 @@ export default {
      * Get recent orders
      * @param {number} soLuong - Number of recent orders to return
      */
-    layDonHangGanDay(soLuong = 10) {
-        return privateApi.get(`${API_URL}/don-hang/gan-day`, { params: { soLuong } });
+    layDonHangGanDay(soLuong = 10, tuNgay = null, denNgay = null) {
+        const params = { soLuong };
+        if (tuNgay) params.tuNgay = tuNgay;
+        if (denNgay) params.denNgay = denNgay;
+        return privateApi.get(`${API_URL}/don-hang/gan-day`, { params });
     },
 
     // ==================== SAN PHAM (PRODUCT) STATISTICS ====================

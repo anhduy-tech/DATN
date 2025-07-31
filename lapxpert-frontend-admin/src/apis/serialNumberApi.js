@@ -202,7 +202,48 @@ const serialNumberApi = {
       }
       throw error
     }
-  }
+  },
+
+  /**
+   * Confirm sale of serial numbers for an order
+   * @param {Array<number>} serialNumberIds - Array of serial number IDs to confirm sale
+   * @param {string} orderId - The order ID to associate with these serial numbers
+   * @returns {Promise<string>} Confirmation message
+   */
+  async confirmSale(serialNumberIds, orderId) {
+    try {
+      const response = await privateApi.post(`${SERIAL_NUMBER_BASE_URL}/confirm-sale`, serialNumberIds, {
+        params: { orderId }
+      })
+      return response.data
+    } catch (error) {
+      console.error('Error confirming serial sale:', error.response?.data || error.message)
+      throw error
+    }
+  },
+
+  async reserveSpecificSerials(serialNumberIds, orderId) {
+    try {
+      const response = await privateApi.post(`${SERIAL_NUMBER_BASE_URL}/reserve-specific`, serialNumberIds, {
+        params: { orderId }
+      });
+      return response.data.data;
+    } catch (error) {
+      console.error('Error reserving specific serials:', error.response?.data || error.message);
+      throw new Error(error.response?.data?.message || 'Không thể đặt trước serial numbers đã chọn');
+    }
+  },
+
+  async checkSerialAvailability(serialNumberIds) {
+    try {
+      const response = await privateApi.post(`${SERIAL_NUMBER_BASE_URL}/check-availability`, serialNumberIds);
+      return response.data.data; // { available: boolean, unavailableSerials: Array<string> }
+    } catch (error) {
+      console.error('Error checking serial availability:', error.response?.data || error.message);
+      throw new Error(error.response?.data?.message || 'Không thể kiểm tra tính khả dụng của serial numbers');
+    }
+  },
+
 }
 
 export default serialNumberApi

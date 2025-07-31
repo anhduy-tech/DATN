@@ -178,52 +178,49 @@ watch(
 onMounted(async () => {
     await loadShippingConfig();
 
+    // Flow 1: Checkout from cart
     if (cartStore.selectedItemsForCheckout.length > 0) {
         isBuyNowFlow.value = false;
-        localCheckoutItems.value = cartStore.selectedItemsForCheckout.map(item => ({
-            ...item,
-            quantity: 1
-        }));
-        toast.add({ severity: 'info', summary: 'Giỏ hàng', detail: `Đã tải ${localCheckoutItems.value.length} sản phẩm từ giỏ hàng.`, life: 3000 });
-    } else {
-        const productId = route.query.productId;
-        const variantId = route.query.variantId;
-        const serialNumberId = route.query.serialNumberId ? parseInt(route.query.serialNumberId) : null;
-        const serialNumberValue = route.query.serialNumberValue || '';
-        const quantity = parseInt(route.query.quantity || 1);
+        localCheckoutItems.value = cartStore.selectedItemsForCheckout;
+        toast.add({ severity: 'info', summary: 'Giỏ hàng', detail: `Đã tải ${localCheckoutItems.value.length} loại sản phẩm từ giỏ hàng.`, life: 3000 });
+        cartStore.clearSelectedItemsForCheckout(); // Clear after loading
+        return; // Exit after handling cart flow
+    }
 
-        if (productId && variantId) {
-            isBuyNowFlow.value = true;
-            try {
-                const product = await productStore.fetchProductById(productId);
-                if (product) {
-                    const variant = product.sanPhamChiTiets.find(v => v.id == variantId);
-                    if (variant) {
-                        singleCheckoutItem.value = {
-                            productId: product.id,
-                            variantId: variant.id,
-                            serialId: serialNumberId,
-                            name: product.tenSanPham + ' - ' + (variant.sku || 'Variant'),
-                            image: product.hinhAnh && product.hinhAnh.length > 0 ? product.hinhAnh[0] : null,
-                            price: variant.giaKhuyenMai && variant.giaKhuyenMai < variant.giaBan ? variant.giaKhuyenMai : variant.giaBan,
-                            quantity: quantity,
-                            sanPhamChiTiet: { ...variant, serialNumberId: serialNumberId, serialNumber: serialNumberValue },
-                            sanPham: product
-                        };
-                        toast.add({ severity: 'info', summary: 'Mua ngay', detail: `Sản phẩm "${singleCheckoutItem.value.name}" đã sẵn sàng thanh toán.`, life: 3000 });
-                    } else {
-                        throw new Error('Không tìm thấy biến thể sản phẩm.');
-                    }
+    // Flow 2: Buy Now
+    const productId = route.query.productId;
+    const variantId = route.query.variantId;
+    const quantity = parseInt(route.query.quantity || 1);
+
+    if (productId && variantId) {
+        isBuyNowFlow.value = true;
+        try {
+            const product = await productStore.fetchProductById(productId);
+            if (product) {
+                const variant = product.sanPhamChiTiets.find(v => v.id == variantId);
+                if (variant) {
+                    singleCheckoutItem.value = {
+                        productId: product.id,
+                        variantId: variant.id,
+                        name: product.tenSanPham + ' - ' + (variant.sku || 'Variant'),
+                        image: product.hinhAnh && product.hinhAnh.length > 0 ? product.hinhAnh[0] : null,
+                        price: variant.giaKhuyenMai && variant.giaKhuyenMai < variant.giaBan ? variant.giaKhuyenMai : variant.giaBan,
+                        quantity: quantity,
+                        sanPhamChiTiet: variant, // Keep full variant info
+                        sanPham: product,       // Keep full product info
+                    };
+                    toast.add({ severity: 'info', summary: 'Mua ngay', detail: `Sản phẩm "${singleCheckoutItem.value.name}" đã sẵn sàng thanh toán.`, life: 3000 });
                 } else {
-                    throw new Error('Không tìm thấy sản phẩm.');
+                    throw new Error('Không tìm thấy biến thể sản phẩm.');
                 }
-            } catch (err) {
-                toast.add({ severity: 'error', summary: 'Lỗi', detail: err.message || 'Không thể tải thông tin sản phẩm.', life: 5000 });
-                isBuyNowFlow.value = false;
+            } else {
+                throw new Error('Không tìm thấy sản phẩm.');
             }
+        } catch (err) {
+            toast.add({ severity: 'error', summary: 'Lỗi', detail: err.message || 'Không thể tải thông tin sản phẩm.', life: 5000 });
+            isBuyNowFlow.value = false;
         }
     }
-    cartStore.clearSelectedItemsForCheckout();
 });
 
 const placeOrder = async () => {
@@ -273,37 +270,18 @@ const placeOrder = async () => {
                 tinhThanh: selectedProvince.value.name,
                 loaiDiaChi: 'Nhà riêng'
             },
-            chiTiet: itemsToOrder.map(item => {
-                if (item.serialId && !item.sanPhamChiTiet) {
-                    return {
-                        sanPhamChiTietId: item.variantId,
-                        soLuong: 1,
-                        giaGoc: item.price,
-                        giaBan: item.price,
-                        thanhTien: item.price,
-                        tenSanPhamSnapshot: item.name.split(' - ')[0],
-                        skuSnapshot: item.name.split(' - ')[1] || item.name,
-                        hinhAnhSnapshot: item.image,
-                        serialNumberId: item.serialId,
-                        serialNumber: item.serialId,
-                    };
-                } else {
-                    const sanPhamChiTietPlain = JSON.parse(JSON.stringify(item.sanPhamChiTiet));
-                    const sanPhamPlain = JSON.parse(JSON.stringify(item.sanPham));
-                    return {
-                        sanPhamChiTietId: sanPhamChiTietPlain.id,
-                        soLuong: item.quantity,
-                        giaGoc: sanPhamChiTietPlain.giaBan,
-                        giaBan: item.price,
-                        thanhTien: item.price * item.quantity,
-                        tenSanPhamSnapshot: sanPhamPlain.tenSanPham,
-                        skuSnapshot: sanPhamChiTietPlain.sku,
-                        hinhAnhSnapshot: sanPhamPlain.hinhAnh && sanPhamPlain.hinhAnh.length > 0 ? sanPhamPlain.hinhAnh[0] : null,
-                        serialNumberId: sanPhamChiTietPlain.serialNumberId || null,
-                        serialNumber: sanPhamChiTietPlain.serialNumber || null,
-                    };
-                }
-            }),
+            chiTiet: itemsToOrder.map(item => ({
+                sanPhamChiTietId: item.variantId,
+                soLuong: item.quantity,
+                giaGoc: item.price, // Assuming item.price is the original price
+                giaBan: item.price, // Assuming item.price is the final price per unit
+                thanhTien: item.price * item.quantity,
+                tenSanPhamSnapshot: item.name.split(' - ')[0],
+                skuSnapshot: item.name.split(' - ')[1] || item.name,
+                hinhAnhSnapshot: item.image,
+                serialNumberId: null, // IMPORTANT: Set to null
+                serialNumber: null,   // IMPORTANT: Set to null
+            })),
             nhanVienId: null,
         };
 
@@ -371,7 +349,6 @@ const placeOrder = async () => {
                         <div v-if="checkoutItems.length > 0">
                             <div v-for="item in checkoutItems" :key="item.id" class="flex justify-between items-center py-2 border-b last:border-b-0">
                                 <div class="flex items-center">
-                                    <img :src="item.image || 'https://via.placeholder.com/50'" :alt="item.name" class="w-12 h-12 object-contain rounded-md mr-4" />
                                     <div>
                                         <p class="font-semibold">{{ item.name }}</p>
                                         <p class="text-sm text-gray-600">Số lượng: {{ item.quantity }}</p>

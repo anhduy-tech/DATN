@@ -27,6 +27,11 @@ const router = createRouter({
           component: () => import('@/views/discount/DiscountList.vue'),
         },
         {
+          path: '/pos-app',
+          name: 'PosApp',
+          component: () => import('@/views/orders/POSVIew.vue'),
+        },
+        {
           path: '/chat',
           name: 'ChatTest',
           component: () => import('@/views/ChatPage.vue'),
@@ -249,8 +254,6 @@ const router = createRouter({
 
       ],
     },
-
-
 
     {
       path: '/:pathMatch(.*)*',

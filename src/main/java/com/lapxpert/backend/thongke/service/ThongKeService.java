@@ -1,5 +1,6 @@
 package com.lapxpert.backend.thongke.service;
 
+import com.lapxpert.backend.hoadon.dto.HoaDonDto;
 import com.lapxpert.backend.thongke.dto.*;
 
 import java.time.LocalDate;
@@ -58,12 +59,7 @@ public interface ThongKeService {
      */
     Map<String, Object> layGiaTriDonHangTrungBinh();
 
-    /**
-     * Get recent orders
-     * @param soLuong Number of recent orders to return
-     * @return List of recent orders
-     */
-    List<com.lapxpert.backend.hoadon.entity.HoaDon> layDonHangGanDay(Integer soLuong);
+    
 
     // ==================== SAN PHAM (PRODUCT) STATISTICS ====================
 
@@ -118,4 +114,6 @@ public interface ThongKeService {
      * @return Dashboard summary data
      */
     DashboardSummaryDto layDashboardSummary();
+
+
 }

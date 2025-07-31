@@ -52,8 +52,8 @@
             <span class="font-medium text-sm">{{ tab.maHoaDon }}</span>
             <Badge v-if="tab.sanPhamList.length > 0" :value="tab.sanPhamList.length" severity="info" size="small" />
             <Button icon="pi pi-times" text rounded size="small" class="w-5 h-5 ml-1" :class="activeTabId === tab.id
-                ? 'text-white hover:bg-white/20'
-                : 'text-surface-500 hover:bg-surface-300'
+              ? 'text-white hover:bg-white/20'
+              : 'text-surface-500 hover:bg-surface-300'
               " @click.stop="closeTabWithConfirmation(tab.id)" />
           </div>
 
@@ -118,7 +118,7 @@
                 </div>
                 <div class="text-sm text-primary font-semibold">{{
                   formatCurrency(item.donGia)
-                  }}</div>
+                }}</div>
               </div>
               <div class="flex items-center gap-3">
                 <div
@@ -253,14 +253,14 @@
                         <div class="font-medium">{{ item.hoTen }}</div>
                         <div class="text-sm text-surface-500">{{
                           item.soDienThoai || 'Không có SĐT'
-                          }}</div>
+                        }}</div>
                       </div>
                     </div>
                   </template>
                 </AutoComplete>
                 <small v-if="recipientErrors.hoTen" class="p-error">{{
                   recipientErrors.hoTen
-                  }}</small>
+                }}</small>
               </div>
 
               <!-- Recipient Phone -->
@@ -284,7 +284,7 @@
                 </AutoComplete>
                 <small v-if="recipientErrors.soDienThoai" class="p-error">{{
                   recipientErrors.soDienThoai
-                  }}</small>
+                }}</small>
               </div>
 
               <!-- Embedded Address Form -->
@@ -308,7 +308,7 @@
                     :class="{ 'p-invalid': addressErrors.duong }" />
                   <small v-if="addressErrors.duong" class="p-error">{{
                     addressErrors.duong
-                    }}</small>
+                  }}</small>
                 </div>
 
                 <!-- Province/City -->
@@ -321,7 +321,7 @@
                     @change="onProvinceChange" :loading="loadingProvinces" />
                   <small v-if="addressErrors.tinhThanh" class="p-error">{{
                     addressErrors.tinhThanh
-                    }}</small>
+                  }}</small>
                 </div>
 
                 <!-- District -->
@@ -334,7 +334,7 @@
                     @change="onDistrictChange" :disabled="!selectedProvince" :loading="loadingDistricts" />
                   <small v-if="addressErrors.quanHuyen" class="p-error">{{
                     addressErrors.quanHuyen
-                    }}</small>
+                  }}</small>
                 </div>
 
                 <!-- Ward -->
@@ -347,7 +347,7 @@
                     :loading="loadingWards" />
                   <small v-if="addressErrors.phuongXa" class="p-error">{{
                     addressErrors.phuongXa
-                    }}</small>
+                  }}</small>
                 </div>
 
                 <!-- Shipping Fee Calculator -->
@@ -552,8 +552,8 @@
                   </div>
 
                   <Button icon="pi pi-plus" text rounded size="small" :class="isBestAvailableVoucher(voucher)
-                      ? 'text-green-600 hover:bg-green-100'
-                      : 'text-primary hover:bg-primary/10'
+                    ? 'text-green-600 hover:bg-green-100'
+                    : 'text-primary hover:bg-primary/10'
                     " />
                 </div>
               </div>
@@ -562,8 +562,8 @@
             <!-- Show More/Less Button -->
             <div v-if="availableVouchers.length > voucherDisplayLimit" class="text-center mt-3">
               <Button :label="showAllVouchers
-                  ? 'Thu gọn'
-                  : `Xem thêm ${availableVouchers.length - voucherDisplayLimit} voucher`
+                ? 'Thu gọn'
+                : `Xem thêm ${availableVouchers.length - voucherDisplayLimit} voucher`
                 " :icon="showAllVouchers ? 'pi pi-angle-up' : 'pi pi-angle-down'" text size="small"
                 @click="toggleVoucherDisplay" />
             </div>
@@ -590,7 +590,7 @@
                     </div>
                     <div class="text-xs text-surface-500 mb-2">{{
                       recommendation.voucher.moTa
-                      }}</div>
+                    }}</div>
 
                     <!-- Voucher Details -->
                     <div class="space-y-1">
@@ -748,7 +748,7 @@
                   <span class="font-medium">{{ order.orderCode }}</span>
                   <span class="text-xs">{{
                     formatRemainingTime(getRemainingTimeForOrder(order.id))
-                    }}</span>
+                  }}</span>
                 </div>
               </div>
             </div>
@@ -776,8 +776,7 @@
               <i class="pi pi-calculator text-primary"></i>
               Tổng kết đơn hàng
             </div>
-            <Button icon="pi pi-refresh" outlined size="small"
-              @click="calculateTabTotals(activeTabId)"
+            <Button icon="pi pi-refresh" outlined size="small" @click="calculateTabTotals(activeTabId)"
               v-tooltip.left="'Tính lại tổng tiền'" />
           </div>
 
@@ -938,7 +937,7 @@
               <div class="text-sm text-surface-500">{{ activeTab.khachHang.soDienThoai }}</div>
               <div v-if="activeTab.khachHang.email" class="text-xs text-surface-400">{{
                 activeTab.khachHang.email
-                }}</div>
+              }}</div>
             </div>
           </div>
 
@@ -959,7 +958,7 @@
                 <span class="font-medium text-blue-700">Số điện thoại:</span>
                 <span class="text-surface-700 ml-2">{{
                   recipientInfo.soDienThoai || 'Chưa nhập'
-                  }}</span>
+                }}</span>
               </div>
             </div>
 
@@ -1040,8 +1039,7 @@
             <i class="pi pi-calculator text-primary"></i>
             Tổng kết đơn hàng
           </div>
-          <Button icon="pi pi-refresh" outlined size="small"
-            @click="calculateTabTotals(activeTabId)"
+          <Button icon="pi pi-refresh" outlined size="small" @click="calculateTabTotals(activeTabId)"
             v-tooltip.left="'Tính lại tổng tiền'" />
         </h4>
         <div class="space-y-2">
@@ -1104,6 +1102,7 @@ import { mapTabToHoaDonDto } from '@/utils/orderMapping.js'
 import storageApi from '@/apis/storage'
 import serialNumberApi from '@/apis/serialNumberApi'
 import orderApi from '@/apis/orderApi'
+import { sendPosUpdate, connectPosWebSocket } from '@/apis/posView';
 
 // PrimeVue Components
 import Toast from 'primevue/toast'
@@ -1746,11 +1745,11 @@ const validateAddressFieldCombinations = async () => {
     if (!validation.isValid) {
       // Return the first error found
       const firstError = validation.fieldErrors.duong ||
-                        validation.fieldErrors.tinhThanh ||
-                        validation.fieldErrors.quanHuyen ||
-                        validation.fieldErrors.phuongXa ||
-                        validation.fieldErrors.general ||
-                        validation.error
+        validation.fieldErrors.tinhThanh ||
+        validation.fieldErrors.quanHuyen ||
+        validation.fieldErrors.phuongXa ||
+        validation.fieldErrors.general ||
+        validation.error
 
       return { valid: false, message: firstError }
     }
@@ -3285,7 +3284,7 @@ const findAndApplyBestVoucher = async () => {
 
 // Smart Voucher Recommendation Logic
 const generateVoucherRecommendation = async () => {
-  if ( !activeTab.value?.tongTienHang) {
+  if (!activeTab.value?.tongTienHang) {
     voucherRecommendations.value = []
     return
   }
@@ -3887,7 +3886,7 @@ const performOrderCreation = async () => {
       source: 'OrderCreate.vue'
     })
     console.log('Creating order with data:', orderData)
-    console.log('Tab data',activeTab.value);
+    console.log('Tab data', activeTab.value);
 
 
     // Create order using orderStore (which handles the actual API call)
@@ -5767,6 +5766,63 @@ onUnmounted(() => {
     }, 'cleanup')
   }
 })
+
+const sendPosUpdateAction = async () => {
+  if (!activeTab.value || !activeTab.value.sanPhamList?.length) {
+    return; // Không gửi nếu không có tab hoặc sanPhamList rỗng
+  }
+
+  try {
+    await sendPosUpdate({
+      action: 'UPDATE_CART',
+      orderId: activeTab.value.id,
+      products: activeTab.value.sanPhamList,
+      timestamp: Date.now(),
+    });
+    logger.debug('Đã gửi cập nhật POS: UPDATE_CART', {
+      orderId: activeTab.value.id,
+      products: activeTab.value.sanPhamList,
+    });
+  } catch (error) {
+    logger.critical('Lỗi khi gửi cập nhật POS: UPDATE_CART', { error });
+  }
+};
+
+onMounted(() => {
+  // Kết nối WebSocket
+  connectPosWebSocket(
+    (msg) => {
+      logger.debug('Nhận cập nhật POS:', msg);
+      if (msg.action === 'PRICE_UPDATE' && activeTab.value) {
+        const product = activeTab.value.sanPhamList.find(
+          (item) => item.sanPhamChiTiet.id === msg.productId
+        );
+        if (product) {
+          product.donGia = msg.newPrice;
+          product.thanhTien = msg.newPrice * product.soLuong;
+          calculateTabTotals(activeTabId.value);
+          logger.debug('Cập nhật giá sản phẩm:', {
+            productId: msg.productId,
+            newPrice: msg.newPrice,
+          });
+        }
+      } else if (msg.action === 'STOCK_UPDATE') {
+        logger.debug('Nhận cập nhật tồn kho:', msg);
+      }
+    },
+    () => {
+      logger.debug('Kết nối WebSocket POS thành công');
+    },
+    (error) => {
+      logger.critical('Lỗi WebSocket POS:', { error });
+    }
+  );
+
+  // Gửi sanPhamList mỗi 1 giây
+  setInterval(() => {
+    sendPosUpdateAction();
+  }, 1000);
+});
 </script>
 
 <style scoped>

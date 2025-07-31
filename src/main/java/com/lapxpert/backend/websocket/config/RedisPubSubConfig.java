@@ -54,6 +54,7 @@ public class RedisPubSubConfig {
     public static final String MESSAGE_SEQUENCE_KEY = "lapxpert:websocket:sequence";
     public static final String MESSAGE_DEDUP_KEY_PREFIX = "lapxpert:websocket:dedup:";
     public static final String PENDING_ACK_KEY_PREFIX = "lapxpert:websocket:pending_ack:";
+    public static final String POS_APP_CHANNEL = "lapxpert:websocket:pos-app";
 
     @Value("${redis.pubsub.enabled:true}")
     private boolean pubSubEnabled;
@@ -82,7 +83,8 @@ public class RedisPubSubConfig {
             MessageListenerAdapter voucherMessageAdapter,
             MessageListenerAdapter chatboxMessageAdapter,
             MessageListenerAdapter aiChatMessageAdapter,
-            MessageListenerAdapter ackMessageAdapter) {
+            MessageListenerAdapter ackMessageAdapter,
+            MessageListenerAdapter posAppMessageAdapter) {
 
         if (!pubSubEnabled) {
             log.warn("Redis Pub/Sub is disabled - WebSocket service will not scale horizontally");
@@ -99,6 +101,7 @@ public class RedisPubSubConfig {
         container.addMessageListener(chatboxMessageAdapter, chatboxChannelTopic());
         container.addMessageListener(aiChatMessageAdapter, aiChatChannelTopic());
         container.addMessageListener(ackMessageAdapter, ackChannelTopic());
+        container.addMessageListener(posAppMessageAdapter, posAppChannelTopic());
 
         // Configure container for production stability and enhanced reliability
         container.setTaskExecutor(null); // Use default task executor
@@ -137,7 +140,15 @@ public class RedisPubSubConfig {
         return new ChannelTopic(VOUCHER_CHANNEL);
     }
 
+    @Bean
+    public ChannelTopic posAppChannelTopic() {
+        return new ChannelTopic(POS_APP_CHANNEL);
+    }
 
+    @Bean
+    public MessageListenerAdapter posAppMessageAdapter(RedisMessageSubscriber subscriber) {
+        return new MessageListenerAdapter(subscriber, "handlePosAppMessage");
+    }
 
     @Bean
     public ChannelTopic chatboxChannelTopic() {

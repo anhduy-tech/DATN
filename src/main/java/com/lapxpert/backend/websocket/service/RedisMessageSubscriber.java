@@ -100,6 +100,24 @@ public class RedisMessageSubscriber {
         }
     }
 
+    public void handlePosAppMessage(String messageJson, String channel) {
+        log.debug("Received POS App message from Redis channel {}: {}", channel, messageJson);
+
+        try {
+            WebSocketMessage message = deserializeMessage(messageJson);
+            if (isValidMessage(message) && shouldProcessMessage(message, channel)) {
+                messagingTemplate.convertAndSend(message.getDestination(), message.getPayload());
+                log.debug("Forwarded POS App message to STOMP destination: {}", message.getDestination());
+
+                sendDeliveryConfirmation(message, channel, true);
+                updateMessageTracking(message, channel);
+            }
+        } catch (Exception e) {
+            log.error("Error processing POS App message: {}", e.getMessage(), e);
+        }
+    }
+
+
     /**
      * Handle product price update messages from Redis with enhanced ordering and delivery guarantees
      * Supports Vietnamese topic structure: /topic/gia-san-pham/{variantId}
