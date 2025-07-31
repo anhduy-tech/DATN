@@ -145,7 +145,7 @@ export const mapTabToHoaDonDto = (tab, options = {}) => {
     tongThanhToan: tongThanhToan,
 
     // Status information
-    trangThaiDonHang: tab.giaohang ? 'CHO_GIAO_HANG' : 'HOAN_THANH',
+    trangThaiDonHang: tab.giaohang ? 'CHO_XAC_NHAN' : 'HOAN_THANH',
     // Payment status depends on payment method - unified logic for all scenarios
     trangThaiThanhToan: (tab.phuongThucThanhToan === 'VNPAY' ||
                         tab.phuongThucThanhToan === 'MOMO' ||
@@ -187,8 +187,68 @@ export const mapTabToHoaDonDto = (tab, options = {}) => {
 }
 
 /**
+ * Maps frontend order data to backend HoaDonDto structure for ORDER UPDATES.
+ * This function preserves existing order status and is specifically designed for updating existing orders.
+ *
+ * @param {Object} order - The existing order data from frontend
+ * @param {Object} options - Optional parameters for mapping
+ * @param {Object} options.addressData - Delivery address data
+ * @param {Object} options.recipientInfo - Recipient information
+ * @param {number} options.consolidatedShippingFee - Calculated shipping fee
+ * @param {number} options.dynamicOrderTotal - Calculated order total
+ * @param {Object} options.validationFunctions - Custom validation functions
+ * @param {Function} options.updateCurrentOrderData - Function to update order data
+ * @param {string} options.source - Source identifier for debug logging
+ * @returns {Object} HoaDonDto structure for backend API (for updates)
+ * @throws {Error} If required data is missing or invalid
+ */
+export const mapOrderToUpdateDto = (order, options = {}) => {
+  // Destructure options with defaults
+  const {
+    addressData = null,
+    recipientInfo = null,
+    consolidatedShippingFee = 0,
+    dynamicOrderTotal = null,
+    validationFunctions = {},
+    updateCurrentOrderData = null,
+    source = 'unknown'
+  } = options
+
+  // Merge validation functions with defaults
+  const validators = {
+    ...defaultValidationFunctions,
+    ...validationFunctions
+  }
+
+  // Validate required order data
+  if (!order) {
+    throw new Error('Order data is required for update mapping')
+  }
+
+  // Use the same logic as mapTabToHoaDonDto but preserve existing order status
+  const dto = mapTabToHoaDonDto(order, options)
+
+  // CRITICAL: Preserve existing order status for updates
+  // Do not change the order status during updates unless explicitly requested
+  dto.trangThaiDonHang = order.trangThaiDonHang || dto.trangThaiDonHang
+
+  // Also preserve existing payment status if order is already paid
+  if (order.trangThaiThanhToan === 'DA_THANH_TOAN') {
+    dto.trangThaiThanhToan = order.trangThaiThanhToan
+  }
+
+  // Debug logging with source identification
+  console.log(`OrderUpdateMapping [${source}] - Preserving order status:`, order.trangThaiDonHang)
+  console.log(`OrderUpdateMapping [${source}] - Preserving payment status:`, order.trangThaiThanhToan)
+  console.log(`OrderUpdateMapping [${source}] - Generated Update DTO:`, dto)
+
+  return dto
+}
+
+/**
  * Export default object for compatibility
  */
 export default {
-  mapTabToHoaDonDto
+  mapTabToHoaDonDto,
+  mapOrderToUpdateDto
 }

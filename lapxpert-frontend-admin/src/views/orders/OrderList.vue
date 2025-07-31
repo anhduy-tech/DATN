@@ -963,16 +963,11 @@ const canCancelOrder = (order) => {
 
 // Conditional button visibility methods
 const shouldShowEditButton = (order) => {
-  // Hide edit button when payment status is DA_THANH_TOAN (Paid)
-  if (order.trangThaiThanhToan === 'DA_THANH_TOAN') {
-    return false
-  }
-
-  if (order.trangThaiDonHang === 'DA_HUY' || order.trangThaiDonHang === 'HOAN_THANH') {
-    return false
+  if (order.trangThaiDonHang === 'CHO_XAC_NHAN') {
+    return true
   }
   // Show edit button only when order status is CHO_XAC_NHAN (Pending Confirmation)
-  return true
+  return false
 }
 
 const shouldShowDeleteButton = (order) => {

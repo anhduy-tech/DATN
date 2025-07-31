@@ -12,7 +12,7 @@
           <div>
             <h1 class="font-semibold text-xl text-surface-900 m-0"> Bán hàng tại quầy </h1>
             <p class="text-surface-500 text-sm mt-1 mb-0">
-              Quản lý nhiều đơn hàng đồng thời với giao diện tab
+              Tạo đơn hàng
             </p>
           </div>
         </div>
