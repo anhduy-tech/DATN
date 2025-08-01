@@ -51,13 +51,13 @@ out/
 .DS_Store
 Thumbs.db
 
-# Environment files (keep .env but ignore actual .env files)
-.env
-.env.local
-.env.*.local
-frontend/.env
-frontend/.env.local
-frontend/.env.*.local
+# Environment files
+# .env
+# .env.local
+# .env.*.local
+# frontend/.env
+# frontend/.env.local
+# frontend/.env.*.local
 
 # Sensitive configuration files
 application-local.properties
