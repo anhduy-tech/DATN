@@ -91,12 +91,7 @@ export function useEmbeddedAddress(options = {}) {
       currentAPISource.value = 'default'
     } catch (error) {
       console.error('Error loading provinces:', error)
-      toast.add({
-        severity: 'error',
-        summary: 'Lỗi',
-        detail: 'Không thể tải danh sách tỉnh/thành phố',
-        life: 3000
-      })
+
     } finally {
       loadingProvinces.value = false
     }
@@ -177,12 +172,6 @@ export function useEmbeddedAddress(options = {}) {
       console.log('Fallback to default address API for provinces')
     } catch (error) {
       console.error('Error loading provinces with fallback:', error)
-      toast.add({
-        severity: 'error',
-        summary: 'Lỗi',
-        detail: 'Không thể tải danh sách tỉnh/thành phố từ cả hai nguồn dữ liệu',
-        life: 3000
-      })
     } finally {
       loadingProvinces.value = false
     }
@@ -227,12 +216,6 @@ export function useEmbeddedAddress(options = {}) {
       addressData.value.tinhThanh = selectedProvince.value.name
     } catch (error) {
       console.error('Error loading districts:', error)
-      toast.add({
-        severity: 'error',
-        summary: 'Lỗi',
-        detail: 'Không thể tải danh sách quận/huyện',
-        life: 3000
-      })
     } finally {
       loadingDistricts.value = false
     }
@@ -273,12 +256,6 @@ export function useEmbeddedAddress(options = {}) {
       addressData.value.quanHuyen = selectedDistrict.value.name
     } catch (error) {
       console.error('Error loading wards:', error)
-      toast.add({
-        severity: 'error',
-        summary: 'Lỗi',
-        detail: 'Không thể tải danh sách phường/xã',
-        life: 3000
-      })
     } finally {
       loadingWards.value = false
     }
@@ -431,12 +408,6 @@ export function useEmbeddedAddress(options = {}) {
 
     } catch (error) {
       console.error('Error adding address to customer:', error)
-      toast.add({
-        severity: 'error',
-        summary: 'Lỗi',
-        detail: error.message || 'Không thể thêm địa chỉ vào danh sách khách hàng',
-        life: 3000
-      })
       return { success: false, error: error.message }
     }
   }
