@@ -1,3 +1,4 @@
+
 <template>
   <Fluid />
   <Toast />
@@ -200,7 +201,6 @@
                         <strong>Địa chỉ giao hàng:</strong>
                         <div class="mt-1 space-y-2">
                           <div v-if="typeof order.diaChiGiaoHang === 'object'">
-                            <!-- Full address summary -->
                             <div class="p-2 bg-surface-100 dark:bg-surface-700 rounded text-surface-800 dark:text-surface-200">
                               {{ formatDetailedAddress(order.diaChiGiaoHang) }}
                             </div>
@@ -254,7 +254,6 @@
                   <p class="text-lg font-mono">{{ order.nhanVien.maNhanVien }}</p>
                 </div>
 
-                <!-- Show creation and update info -->
                 <div class="pt-2 border-t border-surface-200 dark:border-surface-700">
                   <div class="text-xs text-surface-600 space-y-1">
                     <div v-if="order.ngayTao">
@@ -292,7 +291,7 @@
 
                 <div v-if="order.giaTriGiamGiaVoucher" class="flex justify-between items-center">
                   <span class="text-surface-600">Giảm giá voucher:</span>
-                  <span class="font-semibold text-green-600">-{{ formatCurrency(order.giaTriGiamGiaVoucher) }}</span>
+                  <span class=" Hawkins font-semibold text-green-600">-{{ formatCurrency(order.giaTriGiamGiaVoucher) }}</span>
                 </div>
 
                 <hr class="border-surface-200 dark:border-surface-700">
@@ -336,32 +335,9 @@
                       class="w-12 h-12 object-cover rounded border"
                       @error="handleImageError"
                     />
-                    <div class="w-12 h-12 bg-surface-100 dark:bg-surface-800 rounded border flex items-center justify-center" v-else>
-                      <i class="pi pi-image text-surface-400"></i>
-                    </div>
                     <div>
                       <p class="font-semibold">{{ data.tenSanPhamSnapshot || data.sanPhamChiTiet?.sanPham?.tenSanPham || 'Không có tên' }}</p>
                       <p class="text-sm text-surface-600">{{ data.skuSnapshot || data.sanPhamChiTiet?.sanPham?.maSanPham || 'Không có mã' }}</p>
-
-                      <!-- Simplified Serial Numbers Display -->
-                      <div class="mt-2">
-                        <!-- Show serial numbers if available -->
-                        <div v-if="getSerialNumbers(data).length > 0" class="flex flex-wrap gap-1">
-                          <div
-                            v-for="serial in getSerialNumbers(data)"
-                            :key="serial"
-                            class="inline-flex items-center gap-1 px-2 py-1 bg-primary-50 text-primary-700 border border-primary-200 rounded text-xs font-mono"
-                          >
-                            <i class="pi pi-hashtag text-xs"></i>
-                            <span>Serial: {{ serial }}</span>
-                          </div>
-                        </div>
-
-                        <!-- No serial numbers available -->
-                        <div v-else class="flex items-center gap-2">
-                          <span class="text-xs text-surface-500 italic">Không có serial number</span>
-                        </div>
-                      </div>
                     </div>
                   </div>
                 </template>
@@ -381,6 +357,31 @@
               <Column header="Thành tiền" class="text-right min-w-32">
                 <template #body="{ data }">
                   <span class="font-bold text-primary">{{ formatCurrency(data.thanhTien || (data.giaBan * data.soLuong)) }}</span>
+                </template>
+              </Column>
+
+              <!-- Cột hiển thị Serial Numbers -->
+              <Column header="Serial Numbers" class="min-w-32">
+                <template #body="{ data }">
+                  <div>
+                    <span v-if="getSerialNumbers(data).length > 0">
+                      {{ getSerialNumbers(data).join(', ') }}
+                    </span>
+                    <span v-else class="text-surface-500">Chưa gán serial</span>
+                  </div>
+                </template>
+              </Column>
+
+              <Column v-if="choseSerial" header="Hành động" class="text-center min-w-32">
+                <template #body="{ data }">
+                  <Button
+                    label="Chọn Serial"
+                    icon="pi pi-list"
+                    size="small"
+                    severity="secondary"
+                    :disabled="data.soLuong === 0 || isSerialAssigned(data)"
+                    @click="showSerialSelectionDialog(data)"
+                  />
                 </template>
               </Column>
             </DataTable>
@@ -467,8 +468,6 @@
               </div>
             </div>
           </div>
-
-          <!-- Payment Actions are now handled by PaymentStatus component above -->
         </TabPanel>
 
         <TabPanel value="timeline">
@@ -493,9 +492,10 @@
                 </span>
               </div>
               <div class="w-full bg-surface-200 dark:bg-surface-700 rounded-full h-2">
-                <div class="bg-primary h-2 rounded-full transition-all duration-300"
-                     :style="{ width: `${Math.round((orderTimeline.filter(item => item.completed).length / orderTimeline.length) * 100)}%` }">
-                </div>
+                <div
+                  class="bg-primary h-2 rounded-full transition-all duration-300"
+                  :style="{ width: `${Math.round((orderTimeline.filter(item => item.completed).length / orderTimeline.length) * 100)}%` }"
+                ></div>
               </div>
               <div class="flex justify-between mt-2 text-xs text-surface-600">
                 <span>Bắt đầu</span>
@@ -507,23 +507,31 @@
 
             <Timeline :value="orderTimeline" class="w-full">
               <template #marker="{ item }">
-                <div class="flex items-center justify-center w-10 h-10 rounded-full border-2 relative"
-                     :class="item.markerClass">
+                <div
+                  class="flex items-center justify-center w-10 h-10 rounded-full border-2 relative"
+                  :class="item.markerClass"
+                >
                   <i :class="item.icon" class="text-sm"></i>
-                  <!-- Current status indicator -->
-                  <div v-if="item.current" class="absolute -top-1 -right-1 w-3 h-3 bg-primary rounded-full border-2 border-white"></div>
-                  <!-- Pending status indicator -->
-                  <div v-if="item.pending" class="absolute inset-0 rounded-full border-2 border-dashed border-surface-300"></div>
+                  <div
+                    v-if="item.current"
+                    class="absolute -top-1 -right-1 w-3 h-3 bg-primary rounded-full border-2 border-white"
+                  ></div>
+                  <div
+                    v-if="item.pending"
+                    class="absolute inset-0 rounded-full border-2 border-dashed border-surface-300"
+                  ></div>
                 </div>
               </template>
 
               <template #content="{ item }">
-                <Card class="border border-surface-200 dark:border-surface-700 mb-4"
-                      :class="{
-                        'opacity-60': item.pending,
-                        'ring-1 ring-primary-200': item.current,
-                        'bg-surface-50 dark:bg-surface-800': item.pending
-                      }">
+                <Card
+                  class="border border-surface-200 dark:border-surface-700 mb-4"
+                  :class="{
+                    'opacity-60': item.pending,
+                    'ring-1 ring-primary-200': item.current,
+                    'bg-surface-50 dark:bg-surface-800': item.pending
+                  }"
+                >
                   <template #content>
                     <div class="space-y-3">
                       <div class="flex justify-between items-start">
@@ -533,19 +541,26 @@
                             :severity="item.severity"
                             :class="{ 'opacity-60': item.pending }"
                           />
-                          <span class="font-semibold text-surface-900 dark:text-surface-0"
-                                :class="{ 'text-surface-500': item.pending }">
+                          <span
+                            class="font-semibold text-surface-900 dark:text-surface-0"
+                            :class="{ 'text-surface-500': item.pending }"
+                          >
                             {{ item.title }}
                           </span>
-                          <!-- Status indicators -->
                           <div class="flex items-center gap-1">
-                            <i v-if="item.completed && !item.current" class="pi pi-check-circle text-green-500 text-xs"></i>
+                            <i
+                              v-if="item.completed && !item.current"
+                              class="pi pi-check-circle text-green-500 text-xs"
+                            ></i>
                             <i v-if="item.current" class="pi pi-clock text-primary text-xs"></i>
                             <i v-if="item.pending" class="pi pi-hourglass text-surface-400 text-xs"></i>
                           </div>
                         </div>
                         <div class="text-right">
-                          <span v-if="item.timestamp" class="text-sm text-surface-600 dark:text-surface-400">
+                          <span
+                            v-if="item.timestamp"
+                            class="text-sm text-surface-600 dark:text-surface-400"
+                          >
                             {{ formatDateTime(item.timestamp) }}
                           </span>
                           <div v-else-if="item.pending" class="text-xs text-surface-500 italic">
@@ -554,28 +569,42 @@
                         </div>
                       </div>
 
-                      <p v-if="item.description" class="text-sm text-surface-700 dark:text-surface-300"
-                         :class="{ 'text-surface-500': item.pending }">
+                      <p
+                        v-if="item.description"
+                        class="text-sm text-surface-700 dark:text-surface-300"
+                        :class="{ 'text-surface-500': item.pending }"
+                      >
                         {{ item.description }}
                       </p>
 
-                      <div v-if="item.user" class="text-xs text-surface-600 dark:text-surface-400"
-                           :class="{ 'text-surface-500': item.pending }">
+                      <div
+                        v-if="item.user"
+                        class="text-xs text-surface-600 dark:text-surface-400"
+                        :class="{ 'text-surface-500': item.pending }"
+                      >
                         Bởi: {{ item.user }}
                       </div>
 
-                      <!-- Type-specific additional info -->
-                      <div v-if="item.type === 'payment'" class="text-xs bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 p-2 rounded">
+                      <div
+                        v-if="item.type === 'payment'"
+                        class="text-xs bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 p-2 rounded"
+                      >
                         <i class="pi pi-info-circle mr-1"></i>
                         Giao dịch thanh toán đã được xác nhận
                       </div>
 
-                      <div v-if="item.type === 'refund'" class="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 p-2 rounded">
+                      <div
+                        v-if="item.type === 'refund'"
+                        class="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 p-2 rounded"
+                      >
                         <i class="pi pi-info-circle mr-1"></i>
                         Tiền đã được hoàn trả về tài khoản khách hàng
                       </div>
 
-                      <div v-if="item.type === 'cancellation'" class="text-xs bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 p-2 rounded">
+                      <div
+                        v-if="item.type === 'cancellation'"
+                        class="text-xs bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 p-2 rounded"
+                      >
                         <i class="pi pi-exclamation-triangle mr-1"></i>
                         Đơn hàng đã bị hủy và không thể khôi phục
                       </div>
@@ -666,7 +695,10 @@
     :style="{ width: '450px' }"
   >
     <div class="space-y-4" v-if="selectedStatusUpdate">
-      <p>Bạn có chắc chắn muốn cập nhật trạng thái đơn hàng <strong>{{ order?.maHoaDon }}</strong> thành <strong>{{ selectedStatusUpdate.label }}</strong>?</p>
+      <p>
+        Bạn có chắc chắn muốn cập nhật trạng thái đơn hàng <strong>{{ order?.maHoaDon }}</strong> thành
+        <strong>{{ selectedStatusUpdate.label }}</strong>?
+      </p>
 
       <div>
         <label for="statusReason" class="block text-sm font-medium mb-2">Lý do cập nhật:</label>
@@ -703,98 +735,165 @@
     :order-code="order?.maHoaDon"
   />
 
+  <!-- Serial Selection Dialog -->
+  <Dialog
+    v-model:visible="showSerialDialog"
+    modal
+    :header="`Chọn Serial cho ${currentOrderItem?.tenSanPhamSnapshot || currentOrderItem?.sanPhamChiTiet?.sanPham?.tenSanPham}`"
+    :style="{ width: '60vw' }"
+  >
+    <div class="space-y-4">
+      <p class="text-surface-600">Chọn {{ currentOrderItem?.soLuong }} serial number cho sản phẩm này.</p>
+      <DataTable
+        :value="availableSerials"
+        v-model:selection="selectedSerials"
+        dataKey="id"
+        :paginator="true"
+        :rows="10"
+        selectionMode="multiple"
+        :metaKeySelection="false"
+        :loading="loadingSerials"
+        class="p-datatable-sm"
+      >
+        <Column selectionMode="multiple" headerStyle="width: 3em"></Column>
+        <Column field="serialNumberValue" header="Serial Number"></Column>
+        <Column field="trangThai" header="Trạng thái">
+          <template #body="{ data }">
+            <Badge :value="data.trangThai" :severity="getSerialStatusSeverity(data.trangThai)" />
+          </template>
+        </Column>
+        <Column field="batchNumber" header="Lô sản xuất"></Column>
+        <Column field="ngaySanXuat" header="Ngày sản xuất">
+          <template #body="{ data }">
+            {{ data.ngaySanXuat ? formatDateTime(data.ngaySanXuat) : 'N/A' }}
+          </template>
+        </Column>
+        <Column field="ngayHetBaoHanh" header="Hết bảo hành">
+          <template #body="{ data }">
+            {{ data.ngayHetBaoHanh ? formatDateTime(data.ngayHetBaoHanh) : 'N/A' }}
+          </template>
+        </Column>
+      </DataTable>
+      <Message v-if="availableSerials.length < currentOrderItem?.soLuong" severity="warn">
+        Chỉ có {{ availableSerials.length }} serial number khả dụng, cần {{ currentOrderItem?.soLuong }}.
+      </Message>
+      <Message v-if="selectedSerials.length > currentOrderItem?.soLuong" severity="warn">
+        Bạn đã chọn nhiều hơn số lượng sản phẩm yêu cầu ({{ currentOrderItem?.soLuong }}).
+      </Message>
+      <Message v-if="selectedSerials.length < currentOrderItem?.soLuong" severity="info">
+        Bạn cần chọn thêm {{ currentOrderItem?.soLuong - selectedSerials.length }} serial number.
+      </Message>
+    </div>
+
+    <template #footer>
+      <Button
+        label="Hủy bỏ"
+        severity="secondary"
+        outlined
+        @click="showSerialDialog = false"
+      />
+      <Button
+        label="Xác nhận"
+        severity="primary"
+        :disabled="selectedSerials.length !== currentOrderItem?.soLuong"
+        @click="confirmSerialSelection"
+        :loading="loading"
+      />
+    </template>
+  </Dialog>
+
   <!-- Confirmation Dialog -->
   <ConfirmDialog />
 </template>
 
 <script setup>
-import { ref, computed, onMounted, provide } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { useToast } from 'primevue/usetoast'
-import { useOrderStore } from '@/stores/orderStore'
-import { useOrderAudit } from '@/composables/useOrderAudit'
-import { useConfirmDialog } from '@/composables/useConfirmDialog'
-import orderApi from '@/apis/orderApi'
-import storageApi from '@/apis/storage'
-import serialNumberApi from '@/apis/serialNumberApi'
-import OrderAuditLog from './components/OrderAuditLog.vue'
-import PaymentStatus from './components/PaymentStatus.vue'
-import PaymentSummary from './components/PaymentSummary.vue'
-import ReceiptPreviewDialog from '@/views/orders/components/ReceiptPreviewDialog.vue'
-import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import { ref, computed, onMounted, provide } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { useToast } from 'primevue/usetoast';
+import { useOrderStore } from '@/stores/orderStore';
+import { useOrderAudit } from '@/composables/useOrderAudit';
+import { useConfirmDialog } from '@/composables/useConfirmDialog';
+import orderApi from '@/apis/orderApi';
+import storageApi from '@/apis/storage';
+import serialNumberApi from '@/apis/serialNumberApi';
+import OrderAuditLog from './components/OrderAuditLog.vue';
+import PaymentStatus from './components/PaymentStatus.vue';
+import PaymentSummary from './components/PaymentSummary.vue';
+import ReceiptPreviewDialog from '@/views/orders/components/ReceiptPreviewDialog.vue';
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue';
 
-const route = useRoute()
-const router = useRouter()
-const toast = useToast()
-const orderStore = useOrderStore()
+const route = useRoute();
+const router = useRouter();
+const toast = useToast();
+const orderStore = useOrderStore();
 
 // Use shared audit composable
 const {
   auditHistory,
   auditLoading,
   loadAuditHistory
-} = useOrderAudit()
+} = useOrderAudit();
 
 // Setup confirmation dialog
-const confirmDialog = useConfirmDialog()
-provide('confirmDialog', confirmDialog)
+const confirmDialog = useConfirmDialog();
+provide('confirmDialog', confirmDialog);
 
 // Component state
-const order = ref(null)
-const loading = ref(false)
-const error = ref(null)
-const showCancelDialog = ref(false)
-const cancelReason = ref('')
-const showStatusDialog = ref(false)
-const statusReason = ref('')
-const selectedStatusUpdate = ref(null)
-const paymentHistory = ref([])
-const showReceiptPreview = ref(false)
-const imageUrlCache = ref(new Map())
-const orderSerialNumbers = ref([])
+const order = ref(null);
+const loading = ref(false);
+const error = ref(null);
+const showCancelDialog = ref(false);
+const cancelReason = ref('');
+const showStatusDialog = ref(false);
+const statusReason = ref('');
+const selectedStatusUpdate = ref(null);
+const paymentHistory = ref([]);
+const showReceiptPreview = ref(false);
+const imageUrlCache = ref(new Map());
+const orderSerialNumbers = ref([]);
+const choseSerial = ref(false);
+const availableSerials = ref([]);
+const selectedSerials = ref([]);
+const currentOrderItem = ref(null);
+const loadingSerials = ref(false);
+const showSerialDialog = ref(false); // Thêm khai báo showSerialDialog
 
 // Computed properties
-// Payment actions are handled by PaymentStatus component
-
 const canUpdateStatus = computed(() => {
-  if (!order.value) return false
-  const updatableStatuses = ['CHO_XAC_NHAN', 'DA_XAC_NHAN', 'DANG_XU_LY', 'CHO_GIAO_HANG', 'DANG_GIAO_HANG']
-  return updatableStatuses.includes(order.value.trangThaiDonHang)
-})
+  if (!order.value) return false;
+  const updatableStatuses = ['CHO_XAC_NHAN', 'DA_XAC_NHAN', 'DANG_XU_LY', 'CHO_GIAO_HANG', 'DANG_GIAO_HANG'];
+  return updatableStatuses.includes(order.value.trangThaiDonHang);
+});
 
 const totalQuantity = computed(() => {
-  if (!order.value?.chiTiet) return 0
-  return order.value.chiTiet.reduce((total, item) => total + item.soLuong, 0)
-})
+  if (!order.value?.chiTiet) return 0;
+  return order.value.chiTiet.reduce((total, item) => total + item.soLuong, 0);
+});
 
 const totalAmount = computed(() => {
-  if (!order.value?.chiTiet) return 0
-  return order.value.chiTiet.reduce((total, item) => total + (item.thanhTien || (item.giaBan * item.soLuong)), 0)
-})
+  if (!order.value?.chiTiet) return 0;
+  return order.value.chiTiet.reduce((total, item) => total + (item.thanhTien || (item.giaBan * item.soLuong)), 0);
+});
 
 const distinctProductCount = computed(() => {
-  if (!order.value?.chiTiet) return 0
-  // Count distinct products by grouping by product name or product ID
-  const uniqueProducts = new Set()
+  if (!order.value?.chiTiet) return 0;
+  const uniqueProducts = new Set();
   order.value.chiTiet.forEach(item => {
-    const productKey = item.tenSanPhamSnapshot || item.sanPhamChiTiet?.sanPham?.tenSanPham || item.sanPhamChiTiet?.sanPham?.id
+    const productKey = item.tenSanPhamSnapshot || item.sanPhamChiTiet?.sanPham?.tenSanPham || item.sanPhamChiTiet?.sanPham?.id;
     if (productKey) {
-      uniqueProducts.add(productKey)
+      uniqueProducts.add(productKey);
     }
-  })
-  return uniqueProducts.size
-})
-
-// Remove unused remainingAmount - now handled by PaymentSummary component
+  });
+  return uniqueProducts.size;
+});
 
 const orderTimeline = computed(() => {
-  if (!order.value) return []
+  if (!order.value) return [];
 
-  const timeline = []
-  const currentStatus = order.value.trangThaiDonHang
-  const currentPaymentStatus = order.value.trangThaiThanhToan
+  const timeline = [];
+  const currentStatus = order.value.trangThaiDonHang;
+  const currentPaymentStatus = order.value.trangThaiThanhToan;
 
-  // Define the complete order lifecycle based on order type
   const getOrderLifecycle = () => {
     const baseLifecycle = [
       'CHO_XAC_NHAN',
@@ -803,26 +902,22 @@ const orderTimeline = computed(() => {
       'CHO_GIAO_HANG',
       'DANG_GIAO_HANG',
       'HOAN_THANH'
-    ]
-
-    // For TAI_QUAY orders, some steps might be skipped
+    ];
     if (order.value.loaiHoaDon === 'TAI_QUAY') {
-      // POS orders might skip shipping steps
       return [
         'CHO_XAC_NHAN',
         'DA_XAC_NHAN',
         'DANG_XU_LY',
         'HOAN_THANH'
-      ]
+      ];
     }
+    return baseLifecycle;
+  };
 
-    return baseLifecycle
-  }
+  const lifecycle = getOrderLifecycle();
+  const currentStatusIndex = lifecycle.indexOf(currentStatus);
 
-  const lifecycle = getOrderLifecycle()
-  const currentStatusIndex = lifecycle.indexOf(currentStatus)
-
-  // 1. Add creation event
+  // Creation event
   timeline.push({
     status: 'Tạo đơn hàng',
     title: 'Đơn hàng được tạo',
@@ -834,9 +929,9 @@ const orderTimeline = computed(() => {
     markerClass: 'bg-green-100 border-green-300 text-green-600',
     completed: true,
     type: 'creation'
-  })
+  });
 
-  // 2. Add payment events if payment is confirmed
+  // Payment events
   if (currentPaymentStatus === 'DA_THANH_TOAN' && order.value.ngayThanhToan) {
     timeline.push({
       status: 'Thanh toán',
@@ -849,34 +944,32 @@ const orderTimeline = computed(() => {
       markerClass: 'bg-green-100 border-green-300 text-green-600',
       completed: true,
       type: 'payment'
-    })
+    });
   }
 
-  // 3. Add all lifecycle statuses
+  // Lifecycle statuses
   lifecycle.forEach((status, index) => {
-    const statusInfo = getOrderStatusInfo(status)
-    const isCompleted = index <= currentStatusIndex
-    const isCurrent = status === currentStatus
-    const isPending = index > currentStatusIndex && currentStatus !== 'DA_HUY'
+    const statusInfo = getOrderStatusInfo(status);
+    const isCompleted = index <= currentStatusIndex;
+    const isCurrent = status === currentStatus;
+    const isPending = index > currentStatusIndex && currentStatus !== 'DA_HUY';
 
-    // Skip if order is cancelled and this is a future step
     if (currentStatus === 'DA_HUY' && index > currentStatusIndex) {
-      return
+      return;
     }
 
-    let timestamp = null
-    let user = 'Hệ thống'
-    let description = getStatusDescription(status)
+    let timestamp = null;
+    let user = 'Hệ thống';
+    let description = getStatusDescription(status);
 
     if (isCurrent) {
-      timestamp = order.value.ngayCapNhat || order.value.ngayTao
-      user = order.value.nguoiCapNhat || order.value.nhanVien?.hoTen || 'Hệ thống'
+      timestamp = order.value.ngayCapNhat || order.value.ngayTao;
+      user = order.value.nguoiCapNhat || order.value.nhanVien?.hoTen || 'Hệ thống';
     } else if (isCompleted) {
-      // For completed steps, use estimated timestamp or creation time
-      timestamp = order.value.ngayTao
-      description += ' (Đã hoàn thành)'
+      timestamp = order.value.ngayTao;
+      description += ' (Đã hoàn thành)';
     } else if (isPending) {
-      description = `Chờ ${statusInfo.label.toLowerCase()}`
+      description = `Chờ ${statusInfo.label.toLowerCase()}`;
     }
 
     timeline.push({
@@ -896,10 +989,10 @@ const orderTimeline = computed(() => {
       current: isCurrent,
       pending: isPending,
       type: 'status'
-    })
-  })
+    });
+  });
 
-  // 4. Add cancellation event if order is cancelled
+  // Cancellation event
   if (currentStatus === 'DA_HUY') {
     timeline.push({
       status: 'Đã hủy',
@@ -912,10 +1005,10 @@ const orderTimeline = computed(() => {
       markerClass: 'bg-red-100 border-red-300 text-red-600',
       completed: true,
       type: 'cancellation'
-    })
+    });
   }
 
-  // 5. Add return/refund events if applicable
+  // Return/refund events
   if (currentStatus === 'YEU_CAU_TRA_HANG' || currentStatus === 'DA_TRA_HANG') {
     timeline.push({
       status: 'Trả hàng',
@@ -930,7 +1023,7 @@ const orderTimeline = computed(() => {
       markerClass: 'bg-yellow-100 border-yellow-300 text-yellow-600',
       completed: true,
       type: 'return'
-    })
+    });
   }
 
   if (currentPaymentStatus === 'DA_HOAN_TIEN') {
@@ -945,63 +1038,53 @@ const orderTimeline = computed(() => {
       markerClass: 'bg-blue-100 border-blue-300 text-blue-600',
       completed: true,
       type: 'refund'
-    })
+    });
   }
 
-  // Sort timeline by static logical business order instead of dynamic sorting
   return timeline.sort((a, b) => {
-    // Define static business logic order for timeline display
     const businessOrder = {
-      'creation': 1,      // Order creation always first
-      'payment': 2,       // Payment events after creation
-      'status': 3,        // Status progression events
-      'cancellation': 4,  // Cancellation events
-      'return': 5,        // Return events
-      'refund': 6         // Refund events last
-    }
+      'creation': 1,
+      'payment': 2,
+      'status': 3,
+      'cancellation': 4,
+      'return': 5,
+      'refund': 6
+    };
 
-    // Primary sort by business logic type
-    const aOrder = businessOrder[a.type] || 999
-    const bOrder = businessOrder[b.type] || 999
+    const aOrder = businessOrder[a.type] || 999;
+    const bOrder = businessOrder[b.type] || 999;
 
     if (aOrder !== bOrder) {
-      return aOrder - bOrder
+      return aOrder - bOrder;
     }
 
-    // Secondary sort for same type: use lifecycle order for status events
     if (a.type === 'status' && b.type === 'status') {
-      const lifecycleOrder = ['CHO_XAC_NHAN', 'DA_XAC_NHAN', 'DANG_XU_LY', 'CHO_GIAO_HANG', 'DANG_GIAO_HANG', 'HOAN_THANH']
-
-      // For pending items, maintain logical progression order
+      const lifecycleOrder = ['CHO_XAC_NHAN', 'DA_XAC_NHAN', 'DANG_XU_LY', 'CHO_GIAO_HANG', 'DANG_GIAO_HANG', 'HOAN_THANH'];
       if (a.pending && b.pending) {
-        const aIndex = lifecycleOrder.findIndex(status => a.status.includes(getOrderStatusInfo(status).label))
-        const bIndex = lifecycleOrder.findIndex(status => b.status.includes(getOrderStatusInfo(status).label))
-        return aIndex - bIndex
+        const aIndex = lifecycleOrder.findIndex(status => a.status.includes(getOrderStatusInfo(status).label));
+        const bIndex = lifecycleOrder.findIndex(status => b.status.includes(getOrderStatusInfo(status).label));
+        return aIndex - bIndex;
       }
-
-      // For completed items, show in logical progression order (not reverse chronological)
-      const aIndex = lifecycleOrder.findIndex(status => a.status.includes(getOrderStatusInfo(status).label))
-      const bIndex = lifecycleOrder.findIndex(status => b.status.includes(getOrderStatusInfo(status).label))
-      return aIndex - bIndex
+      const aIndex = lifecycleOrder.findIndex(status => a.status.includes(getOrderStatusInfo(status).label));
+      const bIndex = lifecycleOrder.findIndex(status => b.status.includes(getOrderStatusInfo(status).label));
+      return aIndex - bIndex;
     }
 
-    // Tertiary sort: pending items after completed items of same type
-    if (a.pending && !b.pending) return 1
-    if (!a.pending && b.pending) return -1
+    if (a.pending && !b.pending) return 1;
+    if (!a.pending && b.pending) return -1;
 
-    // Final sort: by timestamp for same type and completion status
     if (a.timestamp && b.timestamp) {
-      return new Date(a.timestamp) - new Date(b.timestamp) // Chronological order
+      return new Date(a.timestamp) - new Date(b.timestamp);
     }
 
-    return 0 // Equal priority
-  })
-})
+    return 0;
+  });
+});
 
 const availableStatusUpdates = computed(() => {
-  if (!order.value) return []
+  if (!order.value) return [];
 
-  const currentStatus = order.value.trangThaiDonHang
+  const currentStatus = order.value.trangThaiDonHang;
   const statusFlow = {
     'CHO_XAC_NHAN': [
       { value: 'DA_XAC_NHAN', label: 'Xác nhận đơn hàng', icon: 'pi pi-check', severity: 'success' },
@@ -1020,16 +1103,15 @@ const availableStatusUpdates = computed(() => {
     'DANG_GIAO_HANG': [
       { value: 'HOAN_THANH', label: 'Hoàn thành đơn hàng', icon: 'pi pi-check-circle', severity: 'success' }
     ]
-  }
+  };
 
-  return statusFlow[currentStatus] || []
-})
+  return statusFlow[currentStatus] || [];
+});
 
 // Methods
 const formatDateTime = (dateString) => {
-  if (!dateString) return 'Không có thông tin'
-
-  const date = new Date(dateString)
+  if (!dateString) return 'Không có thông tin';
+  const date = new Date(dateString);
   return date.toLocaleString('vi-VN', {
     day: '2-digit',
     month: '2-digit',
@@ -1037,515 +1119,384 @@ const formatDateTime = (dateString) => {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit'
-  })
-}
+  });
+};
 
 const formatCurrency = (amount) => {
-  if (amount === null || amount === undefined) return '0 ₫'
+  if (amount === null || amount === undefined) return '0 ₫';
   return new Intl.NumberFormat('vi-VN', {
     style: 'currency',
     currency: 'VND'
-  }).format(amount)
-}
+  }).format(amount);
+};
 
 const getOrderStatusInfo = (status) => {
-  return orderStore.getOrderStatusInfo(status)
-}
+  return orderStore.getOrderStatusInfo(status);
+};
 
 const getOrderTypeInfo = (type) => {
-  return orderStore.getOrderTypeInfo(type)
-}
+  return orderStore.getOrderTypeInfo(type);
+};
 
 const getPaymentMethodLabel = (method) => {
   const methodMap = {
     'TIEN_MAT': 'Tiền mặt',
     'VNPAY': 'VNPay',
     'MOMO': 'MoMo'
-  }
-  return methodMap[method] || method || 'Không xác định'
-}
+  };
+  return methodMap[method] || method || 'Không xác định';
+};
 
 const formatDetailedAddress = (addressObj) => {
-  if (!addressObj) return 'Không có địa chỉ'
+  if (!addressObj) return 'Không có địa chỉ';
+  const parts = [];
+  if (addressObj.duong) parts.push(addressObj.duong);
+  if (addressObj.phuongXa) parts.push(addressObj.phuongXa);
+  if (addressObj.quanHuyen) parts.push(addressObj.quanHuyen);
+  if (addressObj.tinhThanh) parts.push(addressObj.tinhThanh);
+  if (addressObj.quocGia) parts.push(addressObj.quocGia);
+  return parts.join(', ') || 'Không có địa chỉ';
+};
 
-  const parts = []
-  if (addressObj.duong) parts.push(addressObj.duong)
-  if (addressObj.phuongXa) parts.push(addressObj.phuongXa)
-  if (addressObj.quanHuyen) parts.push(addressObj.quanHuyen)
-  if (addressObj.tinhThanh) parts.push(addressObj.tinhThanh)
-  if (addressObj.quocGia) parts.push(addressObj.quocGia)
-
-  return parts.join(', ') || 'Không có địa chỉ'
-}
-
-const formatCompleteAddress = (address) => {
-  if (!address) return 'Không có địa chỉ'
-
-  const parts = []
-  if (address.duong) parts.push(address.duong)
-  if (address.phuongXa) parts.push(address.phuongXa)
-  if (address.quanHuyen) parts.push(address.quanHuyen)
-  if (address.tinhThanh) parts.push(address.tinhThanh)
-
-  return parts.join(', ') || 'Không có địa chỉ'
-}
-
-// Product image handling with fallback and presigned URL loading
 const getProductImage = (orderItem) => {
-  // Priority: snapshot image > product variant image > product image
-  let imageFilename = null
-
+  let imageFilename = null;
   if (orderItem.hinhAnhSnapshot) {
-    imageFilename = orderItem.hinhAnhSnapshot
+    imageFilename = orderItem.hinhAnhSnapshot;
   } else if (orderItem.sanPhamChiTiet?.hinhAnh) {
-    // Handle both array and string formats for variant images
     if (Array.isArray(orderItem.sanPhamChiTiet.hinhAnh) && orderItem.sanPhamChiTiet.hinhAnh.length > 0) {
-      imageFilename = orderItem.sanPhamChiTiet.hinhAnh[0]
+      imageFilename = orderItem.sanPhamChiTiet.hinhAnh[0];
     } else if (typeof orderItem.sanPhamChiTiet.hinhAnh === 'string') {
-      imageFilename = orderItem.sanPhamChiTiet.hinhAnh
+      imageFilename = orderItem.sanPhamChiTiet.hinhAnh;
     }
   } else if (orderItem.sanPhamChiTiet?.sanPham?.hinhAnh) {
-    // Handle both array and string formats for product images
     if (Array.isArray(orderItem.sanPhamChiTiet.sanPham.hinhAnh) && orderItem.sanPhamChiTiet.sanPham.hinhAnh.length > 0) {
-      imageFilename = orderItem.sanPhamChiTiet.sanPham.hinhAnh[0]
+      imageFilename = orderItem.sanPhamChiTiet.sanPham.hinhAnh[0];
     } else if (typeof orderItem.sanPhamChiTiet.sanPham.hinhAnh === 'string') {
-      imageFilename = orderItem.sanPhamChiTiet.sanPham.hinhAnh
+      imageFilename = orderItem.sanPhamChiTiet.sanPham.hinhAnh;
     }
   }
-
-  if (!imageFilename) return null
-
-  // If it's already a full URL, return as is
-  if (imageFilename.startsWith('http')) return imageFilename
-
-  // Check cache first
+  if (!imageFilename) return null;
+  if (imageFilename.startsWith('http')) return imageFilename;
   if (imageUrlCache.value.has(imageFilename)) {
-    return imageUrlCache.value.get(imageFilename)
+    return imageUrlCache.value.get(imageFilename);
   }
+  loadProductImageUrl(imageFilename);
+  return null;
+};
 
-  // Load presigned URL asynchronously
-  loadProductImageUrl(imageFilename)
-
-  // Return null for now, will update when loaded
-  return null
-}
-
-// Load product image URL asynchronously
 const loadProductImageUrl = async (imageFilename) => {
   try {
-    // Get presigned URL for the image filename
-    const presignedUrl = await storageApi.getPresignedUrl('products', imageFilename)
-
-    // Cache the URL for future use
-    imageUrlCache.value.set(imageFilename, presignedUrl)
-
-    // Force reactivity update
-    imageUrlCache.value = new Map(imageUrlCache.value)
+    const presignedUrl = await storageApi.getPresignedUrl('products', imageFilename);
+    imageUrlCache.value.set(imageFilename, presignedUrl);
+    imageUrlCache.value = new Map(imageUrlCache.value);
   } catch (error) {
-    console.warn('Error getting presigned URL for product image:', imageFilename, error)
-    // Cache null to prevent repeated attempts
-    imageUrlCache.value.set(imageFilename, null)
+    console.warn('Error getting presigned URL for product image:', imageFilename, error);
+    imageUrlCache.value.set(imageFilename, null);
   }
-}
+};
 
 const handleImageError = (event) => {
-  // Replace broken image with placeholder
-  event.target.style.display = 'none'
-  const placeholder = event.target.nextElementSibling
+  event.target.style.display = 'none';
+  const placeholder = event.target.nextElementSibling;
   if (placeholder) {
-    placeholder.style.display = 'flex'
+    placeholder.style.display = 'flex';
   }
-}
+};
 
-// Load serial numbers for the order
 const loadOrderSerialNumbers = async () => {
-  if (!order.value?.id) return
-
+  if (!order.value?.id) return;
   try {
-    const serialNumbers = await serialNumberApi.getSerialNumbersByOrder(order.value.id.toString())
-    orderSerialNumbers.value = serialNumbers || []
+    const serialNumbers = await serialNumberApi.getSerialNumbersByOrder(order.value.id.toString());
+    orderSerialNumbers.value = serialNumbers || [];
   } catch (error) {
-    console.warn('Error loading serial numbers for order:', error)
-    orderSerialNumbers.value = []
+    console.warn('Error loading serial numbers for order:', error);
+    orderSerialNumbers.value = [];
   }
-}
+};
 
-// Get serial numbers for a specific order item
 const getSerialNumbers = (orderItem) => {
-  // Use sanPhamChiTietId directly from the order item (not from nested object)
-  const variantId = orderItem.sanPhamChiTietId || orderItem.sanPhamChiTiet?.id
-
+  const variantId = orderItem.sanPhamChiTietId || orderItem.sanPhamChiTiet?.id;
   if (!variantId || !orderSerialNumbers.value.length) {
-    return []
+    return [];
   }
-
-  // Filter serial numbers that belong to this specific product variant
   const variantSerialNumbers = orderSerialNumbers.value.filter(sn =>
     sn.sanPhamChiTietId === variantId
-  )
-
+  );
   if (!variantSerialNumbers.length) {
-    return []
+    return [];
   }
-
-  // Get all order items for this variant to distribute serial numbers properly
   const variantOrderItems = order.value.chiTiet.filter(item =>
     (item.sanPhamChiTietId || item.sanPhamChiTiet?.id) === variantId
-  )
-
-  // Find the index of the current order item
-  const currentItemIndex = variantOrderItems.findIndex(item => item === orderItem)
-
+  );
+  const currentItemIndex = variantOrderItems.findIndex(item => item === orderItem);
   if (currentItemIndex === -1) {
-    return []
+    return [];
   }
-
-  // Get available serial numbers
   const availableSerialNumbers = variantSerialNumbers
     .map(sn => sn.serialNumberValue)
-    .filter(sn => sn && sn.trim())
-
-  // Distribute serial numbers among order items based on their quantities
-  const distributedSerialNumbers = []
-  let serialNumberIndex = 0
-
+    .filter(sn => sn && sn.trim());
+  const distributedSerialNumbers = [];
+  let serialNumberIndex = 0;
   for (let i = 0; i < variantOrderItems.length; i++) {
-    const item = variantOrderItems[i]
-    const itemQuantity = item.soLuong || 1
-
+    const item = variantOrderItems[i];
+    const itemQuantity = item.soLuong || 1;
     if (i === currentItemIndex) {
-      // This is the current item - assign its serial numbers
       for (let j = 0; j < itemQuantity && serialNumberIndex < availableSerialNumbers.length; j++) {
-        distributedSerialNumbers.push(availableSerialNumbers[serialNumberIndex])
-        serialNumberIndex++
+        distributedSerialNumbers.push(availableSerialNumbers[serialNumberIndex]);
+        serialNumberIndex++;
       }
-      break
+      break;
     } else {
-      // Skip serial numbers for previous items
-      serialNumberIndex += itemQuantity
+      serialNumberIndex += itemQuantity;
     }
   }
+  return distributedSerialNumbers;
+};
 
-  return distributedSerialNumbers
-}
+const isSerialAssigned = (orderItem) => {
+  return getSerialNumbers(orderItem).length >= orderItem.soLuong;
+};
 
-
-
-// Payment method determination - now uses stored data with fallback for backward compatibility
 const getPaymentMethod = () => {
-  if (!order.value) return null
-
-  // Primary: Use stored payment method data from backend (new orders)
+  if (!order.value) return null;
   if (order.value.phuongThucThanhToan) {
-    return order.value.phuongThucThanhToan
+    return order.value.phuongThucThanhToan;
   }
-
-  // Fallback: Use inference logic for existing orders without stored payment method
-  console.warn('Order', order.value.id, 'missing stored payment method, using inference logic for backward compatibility')
-
-  // For paid orders, try to infer payment method from order type and status
+  console.warn('Order', order.value.id, 'missing stored payment method, using inference logic for backward compatibility');
   if (order.value.trangThaiThanhToan === 'DA_THANH_TOAN') {
-    // If it's a POS order and completed immediately, likely cash
     if (order.value.loaiHoaDon === 'TAI_QUAY' && order.value.trangThaiDonHang === 'HOAN_THANH') {
-      return 'TIEN_MAT'
+      return 'TIEN_MAT';
     }
-    // If it's delivered, likely COD
     if (order.value.trangThaiDonHang === 'DA_GIAO_HANG') {
-      return 'COD'
+      return 'COD';
     }
-    // Otherwise, might be VNPAY
-    return 'VNPAY'
+    return 'VNPAY';
   }
+  return null;
+};
 
-  return null
-}
-
-// Paid amount calculation
 const getPaidAmount = () => {
-  if (!order.value) return 0
-
-  // If payment status is paid, return total amount
+  if (!order.value) return 0;
   if (order.value.trangThaiThanhToan === 'DA_THANH_TOAN') {
-    return order.value.tongThanhToan || 0
+    return order.value.tongThanhToan || 0;
   }
+  return order.value.soTienDaThanhToan || 0;
+};
 
-  // Otherwise, return 0 or any partial payment amount if available
-  return order.value.soTienDaThanhToan || 0
-}
-
-
-
-// Payment handler methods for new components
 const handleConfirmPayment = async () => {
-  if (!order.value) return
-
-  // Validate order status for payment confirmation
-  const validStatuses = ['CHO_XAC_NHAN', 'DA_XAC_NHAN', 'DANG_XU_LY', 'CHO_GIAO_HANG', 'DANG_GIAO_HANG']
+  if (!order.value) return;
+  const validStatuses = ['CHO_XAC_NHAN', 'DA_XAC_NHAN', 'DANG_XU_LY', 'CHO_GIAO_HANG', 'DANG_GIAO_HANG'];
   if (!validStatuses.includes(order.value.trangThaiDonHang)) {
     toast.add({
       severity: 'warn',
       summary: 'Cảnh báo',
       detail: 'Không thể xác nhận thanh toán cho đơn hàng ở trạng thái này',
       life: 3000
-    })
-    return
+    });
+    return;
   }
-
-  // Validate payment method exists
   if (!order.value.phuongThucThanhToan) {
     toast.add({
       severity: 'warn',
       summary: 'Cảnh báo',
       detail: 'Đơn hàng chưa có phương thức thanh toán. Vui lòng cập nhật phương thức thanh toán trước.',
       life: 3000
-    })
-    return
+    });
+    return;
   }
-
-  // Show confirmation dialog
   const confirmed = await confirmDialog.showConfirmDialog({
     title: 'Xác nhận thanh toán',
     message: `Bạn có chắc chắn muốn xác nhận thanh toán cho đơn hàng ${order.value.maHoaDon}?`,
     severity: 'success',
     confirmLabel: 'Xác nhận thanh toán',
     cancelLabel: 'Hủy bỏ'
-  })
-
-  if (!confirmed) return
-
+  });
+  if (!confirmed) return;
   try {
-    loading.value = true
-
+    loading.value = true;
     const response = await orderStore.confirmPayment(
       order.value.id,
-      order.value.phuongThucThanhToan || 'TIEN_MAT' // Default to cash if no payment method
-    )
-
+      order.value.phuongThucThanhToan || 'TIEN_MAT'
+    );
     if (response) {
-      // Update local order data
-      order.value = { ...order.value, ...response }
-
-      // Reload audit history
+      order.value = { ...order.value, ...response };
       if (order.value.id) {
-        await loadAuditHistory(order.value.id)
+        await loadAuditHistory(order.value.id);
       }
-
-      // Reload order data to get latest state
-      await refreshData()
-
+      await refreshData();
       toast.add({
         severity: 'success',
         summary: 'Thành công',
         detail: 'Xác nhận thanh toán thành công',
         life: 3000
-      })
+      });
     }
   } catch (err) {
-    console.error('Error confirming payment:', err)
-
-    let errorMessage = 'Không thể xác nhận thanh toán'
+    console.error('Error confirming payment:', err);
+    let errorMessage = 'Không thể xác nhận thanh toán';
     if (err.response?.status === 403) {
-      errorMessage = 'Bạn không có quyền thực hiện thao tác này. Chỉ Admin và Staff mới có thể xác nhận thanh toán.'
+      errorMessage = 'Bạn không có quyền thực hiện thao tác này. Chỉ Admin và Staff mới có thể xác nhận thanh toán.';
     } else if (err.response?.status === 401) {
-      errorMessage = 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'
+      errorMessage = 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
     } else if (err.message?.includes('phuongThucThanhToan')) {
-      errorMessage = 'Phương thức thanh toán không hợp lệ. Vui lòng kiểm tra lại.'
+      errorMessage = 'Phương thức thanh toán không hợp lệ. Vui lòng kiểm tra lại.';
     }
-
     toast.add({
       severity: 'error',
       summary: 'Lỗi',
       detail: errorMessage,
       life: 5000
-    })
+    });
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 
 const handleProcessRefund = async () => {
-  if (!order.value) return
-
-  // Validate payment status for refund
+  if (!order.value) return;
   if (order.value.trangThaiThanhToan !== 'DA_THANH_TOAN') {
     toast.add({
       severity: 'warn',
       summary: 'Cảnh báo',
       detail: 'Chỉ có thể hoàn tiền cho đơn hàng đã thanh toán',
       life: 3000
-    })
-    return
+    });
+    return;
   }
-
-  // Show confirmation dialog
   const confirmed = await confirmDialog.showConfirmDialog({
     title: 'Xác nhận hoàn tiền',
     message: `Bạn có chắc chắn muốn hoàn tiền cho đơn hàng ${order.value.maHoaDon}?`,
     severity: 'warn',
     confirmLabel: 'Xác nhận hoàn tiền',
     cancelLabel: 'Hủy bỏ'
-  })
-
-  if (!confirmed) return
-
+  });
+  if (!confirmed) return;
   try {
-    loading.value = true
-
+    loading.value = true;
     const response = await orderStore.processRefund(
       order.value.id,
       order.value.tongThanhToan,
       'Hoàn tiền theo yêu cầu'
-    )
-
+    );
     if (response) {
-      // Update local order data
-      order.value = { ...order.value, ...response }
-
-      // Reload audit history
+      order.value = { ...order.value, ...response };
       if (order.value.id) {
-        await loadAuditHistory(order.value.id)
+        await loadAuditHistory(order.value.id);
       }
-
       toast.add({
         severity: 'success',
         summary: 'Thành công',
         detail: 'Hoàn tiền thành công',
         life: 3000
-      })
+      });
     }
   } catch (err) {
-    console.error('Error processing refund:', err)
-
-    let errorMessage = 'Không thể hoàn tiền'
+    console.error('Error processing refund:', err);
+    let errorMessage = 'Không thể hoàn tiền';
     if (err.response?.status === 403) {
-      errorMessage = 'Bạn không có quyền thực hiện thao tác này. Chỉ Admin và Staff mới có thể hoàn tiền.'
+      errorMessage = 'Bạn không có quyền thực hiện thao tác này. Chỉ Admin và Staff mới có thể hoàn tiền.';
     } else if (err.response?.status === 401) {
-      errorMessage = 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'
+      errorMessage = 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
     }
-
     toast.add({
       severity: 'error',
       summary: 'Lỗi',
       detail: errorMessage,
       life: 5000
-    })
+    });
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 
 const handleUpdatePaymentStatus = async (statusData) => {
-  if (!order.value) return
-
-  // Show confirmation dialog
+  if (!order.value) return;
   const confirmed = await confirmDialog.showConfirmDialog({
     title: 'Cập nhật trạng thái thanh toán',
     message: `Bạn có chắc chắn muốn cập nhật trạng thái thanh toán cho đơn hàng ${order.value.maHoaDon}?`,
     severity: 'info',
     confirmLabel: 'Cập nhật',
     cancelLabel: 'Hủy bỏ'
-  })
-
-  if (!confirmed) return
-
+  });
+  if (!confirmed) return;
   try {
-    loading.value = true
-
+    loading.value = true;
     const response = await orderStore.updatePaymentStatus(
       order.value.id,
       statusData.status,
       statusData.note || 'Cập nhật trạng thái thanh toán'
-    )
-
+    );
     if (response) {
-      // Update local order data
-      order.value = { ...order.value, ...response }
-
-      // Reload audit history
+      order.value = { ...order.value, ...response };
       if (order.value.id) {
-        await loadAuditHistory(order.value.id)
+        await loadAuditHistory(order.value.id);
       }
-
       toast.add({
         severity: 'success',
         summary: 'Thành công',
         detail: 'Cập nhật trạng thái thanh toán thành công',
         life: 3000
-      })
+      });
     }
   } catch (err) {
-    console.error('Error updating payment status:', err)
-
-    let errorMessage = 'Không thể cập nhật trạng thái thanh toán'
+    console.error('Error updating payment status:', err);
+    let errorMessage = 'Không thể cập nhật trạng thái thanh toán';
     if (err.response?.status === 403) {
-      errorMessage = 'Bạn không có quyền thực hiện thao tác này. Chỉ Admin và Staff mới có thể cập nhật trạng thái thanh toán.'
+      errorMessage = 'Bạn không có quyền thực hiện thao tác này. Chỉ Admin và Staff mới có thể cập nhật trạng thái thanh toán.';
     } else if (err.response?.status === 401) {
-      errorMessage = 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'
+      errorMessage = 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
     }
-
     toast.add({
       severity: 'error',
       summary: 'Lỗi',
       detail: errorMessage,
       life: 5000
-    })
+    });
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 
 const handleViewReceipt = async () => {
-  if (!order.value) return
-
+  if (!order.value) return;
   try {
-    loading.value = true
-
-    // Get receipt HTML content
-    const response = await orderApi.printOrderReceipt(order.value.id)
-
+    loading.value = true;
+    const response = await orderApi.printOrderReceipt(order.value.id);
     if (response && response.data) {
-      // Create a new window with the receipt content for printing
-      const printWindow = window.open('', '_blank')
-
+      const printWindow = window.open('', '_blank');
       if (printWindow) {
-        // Write the HTML content to the new window
-        printWindow.document.write(response.data)
-        printWindow.document.close()
-
-        // Wait for content to load, then trigger print dialog
+        printWindow.document.write(response.data);
+        printWindow.document.close();
         printWindow.onload = () => {
           setTimeout(() => {
-            printWindow.print()
-          }, 500)
-        }
-
+            printWindow.print();
+          }, 500);
+        };
         toast.add({
           severity: 'success',
           summary: 'Thành công',
           detail: 'Mở cửa sổ in hóa đơn thành công',
           life: 3000
-        })
+        });
       } else {
-        throw new Error('Không thể mở cửa sổ in')
+        throw new Error('Không thể mở cửa sổ in');
       }
     } else {
-      throw new Error('Không thể tạo hóa đơn')
+      throw new Error('Không thể tạo hóa đơn');
     }
   } catch (error) {
-    console.error('Error opening receipt:', error)
-
-    // Fallback to preview dialog
+    console.error('Error opening receipt:', error);
     toast.add({
       severity: 'warn',
       summary: 'Thông báo',
       detail: 'Không thể mở cửa sổ in, hiển thị xem trước thay thế',
       life: 3000
-    })
-    showReceiptPreview.value = true
+    });
+    showReceiptPreview.value = true;
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 
 const getStatusDescription = (status) => {
   const descriptionMap = {
@@ -1559,9 +1510,9 @@ const getStatusDescription = (status) => {
     'DA_HUY': 'Đơn hàng đã bị hủy và không thể khôi phục.',
     'YEU_CAU_TRA_HANG': 'Khách hàng yêu cầu trả hàng. Đang xem xét và xử lý yêu cầu.',
     'DA_TRA_HANG': 'Đã xử lý trả hàng thành công. Hàng hóa đã được nhận lại và kiểm tra.'
-  }
-  return descriptionMap[status] || 'Không có mô tả'
-}
+  };
+  return descriptionMap[status] || 'Không có mô tả';
+};
 
 const getTimelineMarkerClass = (status) => {
   const classMap = {
@@ -1575,60 +1526,53 @@ const getTimelineMarkerClass = (status) => {
     'DA_HUY': 'bg-red-100 border-red-300 text-red-600',
     'YEU_CAU_TRA_HANG': 'bg-amber-100 border-amber-300 text-amber-600',
     'DA_TRA_HANG': 'bg-amber-100 border-amber-300 text-amber-600'
-  }
-  return classMap[status] || 'bg-surface-100 border-surface-300 text-surface-600'
-}
+  };
+  return classMap[status] || 'bg-surface-100 border-surface-300 text-surface-600';
+};
 
 const loadOrder = async () => {
-  loading.value = true
-  error.value = null
-
+  loading.value = true;
+  error.value = null;
   try {
-    const orderId = route.params.id
+    const orderId = route.params.id;
     if (!orderId) {
-      throw new Error('ID đơn hàng không hợp lệ')
+      throw new Error('ID đơn hàng không hợp lệ');
     }
-
-    order.value = await orderStore.fetchOrderById(orderId)
-
+    order.value = await orderStore.fetchOrderById(orderId);
     if (!order.value) {
-      throw new Error('Không tìm thấy đơn hàng')
+      throw new Error('Không tìm thấy đơn hàng');
     }
-
-    // Load serial numbers for this order
-    await loadOrderSerialNumbers()
-
+    choseSerial.value = order.value.loaiHoaDon === 'ONLINE' && order.value.trangThaiDonHang === 'CHO_XAC_NHAN';
+    await loadOrderSerialNumbers();
   } catch (err) {
-    error.value = err.message || 'Lỗi tải dữ liệu đơn hàng'
+    error.value = err.message || 'Lỗi tải dữ liệu đơn hàng';
     toast.add({
       severity: 'error',
       summary: 'Lỗi',
       detail: error.value,
       life: 3000
-    })
+    });
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
-
-// loadAuditHistory is now provided by useOrderAudit composable
+};
 
 const refreshData = async () => {
-  await loadOrder()
+  await loadOrder();
   if (order.value?.id) {
-    await loadAuditHistory(order.value.id)
+    await loadAuditHistory(order.value.id);
   }
   toast.add({
     severity: 'success',
     summary: 'Thành công',
     detail: 'Đã làm mới dữ liệu',
     life: 2000
-  })
-}
+  });
+};
 
 const goBack = () => {
-  router.push({ name: 'OrderList' })
-}
+  router.push({ name: 'OrderList' });
+};
 
 const printOrder = async () => {
   if (!order.value) {
@@ -1637,105 +1581,98 @@ const printOrder = async () => {
       summary: 'Cảnh báo',
       detail: 'Không có thông tin đơn hàng để in',
       life: 3000
-    })
-    return
+    });
+    return;
   }
-
   try {
-    // Use the orderApi to print receipt directly
-    const response = await orderApi.printOrderReceipt(order.value.id)
-
+    const response = await orderApi.printOrderReceipt(order.value.id);
     if (response.success) {
-      // Create blob URL and download
-      const blob = new Blob([response.data], { type: 'application/pdf' })
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `hoa-don-${order.value.maHoaDon || order.value.id}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `hoa-don-${order.value.maHoaDon || order.value.id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
       toast.add({
         severity: 'success',
         summary: 'Thành công',
         detail: 'Hóa đơn đã được tải xuống',
         life: 3000
-      })
+      });
     } else {
-      throw new Error(response.message || 'Không thể tạo hóa đơn')
+      throw new Error(response.message || 'Không thể tạo hóa đơn');
     }
   } catch (err) {
-    console.error('Error printing receipt:', err)
-
-    let errorMessage = 'Không thể in hóa đơn'
+    console.error('Error printing receipt:', err);
+    let errorMessage = 'Không thể in hóa đơn';
     if (err.response?.status === 403) {
-      errorMessage = 'Bạn không có quyền in hóa đơn. Vui lòng liên hệ quản trị viên.'
+      errorMessage = 'Bạn không có quyền in hóa đơn. Vui lòng liên hệ quản trị viên.';
     } else if (err.response?.status === 401) {
-      errorMessage = 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'
+      errorMessage = 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
     } else if (err.message) {
-      errorMessage = err.message
+      errorMessage = err.message;
     }
-
     toast.add({
       severity: 'error',
       summary: 'Lỗi',
       detail: errorMessage,
       life: 5000
-    })
+    });
   }
-}
+};
 
-// Custom confirmation dialog removed - now using PrimeVue Dialog component
-
-// updatePaymentStatus is now handled by PaymentStatus component through handleUpdatePaymentStatus
+const areAllSerialsAssigned = computed(() => {
+  if (!order.value || !order.value.chiTiet || order.value.loaiHoaDon !== 'ONLINE') {
+    return true; // Not an online order, no serial check needed
+  }
+  return order.value.chiTiet.every(item => isSerialAssigned(item));
+});
 
 const showStatusUpdateDialog = (statusUpdate) => {
-  selectedStatusUpdate.value = statusUpdate
-  statusReason.value = ''
-  showStatusDialog.value = true
-}
+  if (statusUpdate.value === 'DA_XAC_NHAN' && !areAllSerialsAssigned.value) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Thiếu thông tin',
+      detail: 'Vui lòng chọn đủ số serial cho tất cả sản phẩm trước khi xác nhận.',
+      life: 5000
+    });
+    return;
+  }
+  selectedStatusUpdate.value = statusUpdate;
+  statusReason.value = '';
+  showStatusDialog.value = true;
+};
 
 const confirmStatusUpdate = async () => {
-  if (!selectedStatusUpdate.value) return
-
+  if (!selectedStatusUpdate.value) return;
   try {
-    loading.value = true
-
+    loading.value = true;
     const response = await orderStore.updateOrderStatus(
       order.value.id,
       selectedStatusUpdate.value.value,
       statusReason.value || `Cập nhật trạng thái thành ${selectedStatusUpdate.value.label}`
-    )
-
+    );
     if (response) {
-      showStatusDialog.value = false
-      statusReason.value = ''
-      selectedStatusUpdate.value = null
-
-      // Reload order data to get latest state
-      await refreshData()
-
-      toast.add({
-        severity: 'success',
-        summary: 'Thành công',
-        detail: `Đã cập nhật trạng thái thành ${selectedStatusUpdate.value?.label}`,
-        life: 3000
-      })
+      showStatusDialog.value = false;
+      statusReason.value = '';
+      selectedStatusUpdate.value = null;
+      await refreshData();
     }
   } catch (err) {
-    console.error('Error updating order status:', err)
+    console.error('Error updating order status:', err);
     toast.add({
       severity: 'error',
       summary: 'Lỗi',
       detail: 'Không thể cập nhật trạng thái đơn hàng',
       life: 3000
-    })
+    });
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 
 const confirmCancelOrder = async () => {
   if (!cancelReason.value.trim()) {
@@ -1744,53 +1681,121 @@ const confirmCancelOrder = async () => {
       summary: 'Cảnh báo',
       detail: 'Vui lòng nhập lý do hủy đơn hàng',
       life: 3000
-    })
-    return
+    });
+    return;
   }
-
   try {
-    loading.value = true
-
-    const response = await orderStore.cancelOrder(order.value.id, cancelReason.value)
-
+    loading.value = true;
+    const response = await orderStore.cancelOrder(order.value.id, cancelReason.value);
     if (response) {
-      showCancelDialog.value = false
-      cancelReason.value = ''
-
-      // Reload order data to show cancellation
-      await refreshData()
-
+      showCancelDialog.value = false;
+      cancelReason.value = '';
+      await refreshData();
       toast.add({
         severity: 'success',
         summary: 'Thành công',
         detail: 'Đã hủy đơn hàng thành công',
         life: 3000
-      })
+      });
     }
   } catch (err) {
-    console.error('Error canceling order:', err)
+    console.error('Error canceling order:', err);
     toast.add({
       severity: 'error',
       summary: 'Lỗi',
       detail: 'Không thể hủy đơn hàng',
       life: 3000
-    })
+    });
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
+
+const showSerialSelectionDialog = async (orderItem) => {
+  currentOrderItem.value = orderItem;
+  showSerialDialog.value = true;
+  loadingSerials.value = true;
+  try {
+    const serials = await serialNumberApi.getSerialNumbersByVariant(orderItem.sanPhamChiTietId || orderItem.sanPhamChiTiet?.id);
+    availableSerials.value = serials.filter(s => s.trangThai === 'AVAILABLE');
+    if (availableSerials.value.length < orderItem.soLuong) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Cảnh báo',
+        detail: `Chỉ có ${availableSerials.value.length} serial number khả dụng, cần ${orderItem.soLuong}`,
+        life: 5000
+      });
+    }
+  } catch (err) {
+    console.error('Error loading serial numbers:', err);
+    toast.add({
+      severity: 'error',
+      summary: 'Lỗi',
+      detail: 'Không thể tải danh sách serial number',
+      life: 3000
+    });
+  } finally {
+    loadingSerials.value = false;
+  }
+};
+
+const confirmSerialSelection = async () => {
+  if (!currentOrderItem.value || selectedSerials.value.length !== currentOrderItem.value.soLuong) return;
+  try {
+    loading.value = true;
+    const serialNumberIds = selectedSerials.value.map(serial => serial.id);
+    const availability = await serialNumberApi.checkSerialAvailability(serialNumberIds);
+    if (!availability.available) {
+      toast.add({
+        severity: 'error',
+        summary: 'Lỗi',
+        detail: `Các serial number sau không khả dụng: ${availability.unavailableSerials.join(', ')}`,
+        life: 5000
+      });
+      return;
+    }
+    await serialNumberApi.reserveSpecificSerials(serialNumberIds, order.value.id.toString());
+    await loadOrderSerialNumbers();
+    showSerialDialog.value = false;
+    selectedSerials.value = [];
+    toast.add({
+      severity: 'success',
+      summary: 'Thành công',
+      detail: 'Đã gán serial number cho đơn hàng',
+      life: 3000
+    });
+  } catch (err) {
+    console.error('Error confirming serial selection:', err);
+    toast.add({
+      severity: 'error',
+      summary: 'Lỗi',
+      detail: 'Không thể gán serial number',
+      life: 3000
+    });
+  } finally {
+    loading.value = false;
+  }
+};
+
+const getSerialStatusSeverity = (status) => {
+  const severityMap = {
+    'AVAILABLE': 'success',
+    'RESERVED': 'warning',
+    'SOLD': 'info'
+  };
+  return severityMap[status] || 'secondary';
+};
 
 // Lifecycle
 onMounted(async () => {
-  await loadOrder()
+  await loadOrder();
   if (order.value?.id) {
-    await loadAuditHistory(order.value.id)
+    await loadAuditHistory(order.value.id);
   }
-})
+});
 </script>
 
 <style scoped>
-/* Card styling improvements */
 .card {
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -1801,12 +1806,10 @@ onMounted(async () => {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
 
-/* Equal height cards */
 .grid.items-start > .card.h-full {
-  min-height: 300px; /* Minimum height for order info cards */
+  min-height: 300px;
 }
 
-/* Tab styling */
 .order-detail-tabs :deep(.p-tablist) {
   border-bottom: 1px solid var(--surface-border);
 }
@@ -1825,7 +1828,6 @@ onMounted(async () => {
   border-bottom: 2px solid var(--primary-color);
 }
 
-/* Badge styling */
 :deep(.p-badge) {
   font-size: 0.75rem;
   padding: 0.25rem 0.5rem;

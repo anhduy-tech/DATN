@@ -141,8 +141,8 @@ export const useProductStore = defineStore('product', {
 
       this.loading = true
       try {
-        // Use getActiveProducts instead of getAllProducts to get promotional pricing
-        this.products = await productService.getActiveProducts()
+        // For admin panel, fetch all products regardless of active status or stock
+        this.products = await productService.getAllProducts()
         this.lastFetch = Date.now()
 
         // Cache individual products

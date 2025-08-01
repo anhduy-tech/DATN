@@ -68,6 +68,11 @@ const router = createRouter({
           name: 'shop-vouchers',
           component: () => import('@/views/shop/VoucherListPage.vue'),
         },
+        {
+          path: '/websocket-test',
+          name: 'websocket-test',
+          component: () => import('@/views/WebSocketTest.vue'),
+        },
       ],
     },
   ],

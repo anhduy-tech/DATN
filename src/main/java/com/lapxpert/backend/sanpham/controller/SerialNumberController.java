@@ -246,6 +246,25 @@ public class SerialNumberController {
         return ResponseEntity.ok(ApiResponse.success("Đã hủy đặt trước " + serialNumberIds.size() + " serial numbers"));
     }
 
+    /**
+     * Reserve specific serial numbers for an order
+     */
+    @PostMapping("/reserve-specific")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'STAFF')")
+    public ResponseEntity<ApiResponse<List<SerialNumberDto>>> reserveSpecificSerialNumbers(
+            @RequestBody List<Long> serialNumberIds,
+            @RequestParam String orderId,
+            @RequestParam(defaultValue = "ADMIN_UI") String channel,
+            Principal principal) {
+        
+        List<SerialNumber> reservedSerialNumbers = serialNumberService.reserveSpecificSerialNumbers(
+            serialNumberIds, channel, orderId, principal.getName()
+        );
+        
+        List<SerialNumberDto> responseDto = serialNumberMapper.toOrderDtoList(reservedSerialNumbers);
+        return ResponseEntity.ok(ApiResponse.success(responseDto));
+    }
+
     // Bulk Operations
 
     /**
@@ -513,6 +532,16 @@ public class SerialNumberController {
             );
         }
 
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    /**
+     * Check availability of multiple serial numbers
+     */
+    @PostMapping("/check-availability")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'STAFF')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> checkAvailability(@RequestBody List<Long> serialNumberIds) {
+        Map<String, Object> result = serialNumberService.checkAvailability(serialNumberIds);
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 }

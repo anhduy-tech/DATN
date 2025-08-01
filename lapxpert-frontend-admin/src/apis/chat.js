@@ -234,6 +234,21 @@ export async function sendJoinNotification(sessionId, username) {
 }
 
 /**
+ * Lấy danh sách các phòng chat đang hoạt động
+ * @returns {Promise<Array<string>>} - Promise trả về danh sách sessionId của các phòng chat đang hoạt động
+ */
+export async function getActiveSessions() {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/api/chat/active-sessions`)
+    console.log('Danh sách phòng chat đang hoạt động:', response.data)
+    return response.data
+  } catch (error) {
+    console.error(`Không thể lấy danh sách phòng chat đang hoạt động: ${error.message}`)
+    throw new Error(`Không thể lấy danh sách phòng chat đang hoạt động: ${error.message}`)
+  }
+}
+
+/**
  * Kiểm tra trạng thái kết nối WebSocket
  * @returns {boolean} - True nếu đã kết nối
  */

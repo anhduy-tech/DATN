@@ -148,6 +148,8 @@ public class MessageRoutingService {
             return RedisPubSubConfig.VOUCHER_CHANNEL;
         } else if (isChatboxDestination(destination)) {
             return RedisPubSubConfig.CHATBOX_CHANNEL;
+        }else if (isPosAppDestination(destination)) {
+            return RedisPubSubConfig.POS_APP_CHANNEL;
         } else {
             return RedisPubSubConfig.GLOBAL_CHANNEL;
         }
@@ -361,6 +363,14 @@ public class MessageRoutingService {
                destination.equals("/topic/phieu-giam-gia/better-suggestion");
     }
 
+    private boolean isPosAppDestination(String destination) {
+        return destination.startsWith("/topic/pos-app/");
+    }
+
+    public void sendPosAppUpdate(int roomId, Object data) {
+        String destination = "/topic/pos-app/" + roomId;
+        routeMessage(destination, data, "POS_APP_UPDATE", "POS_SERVICE");
+    }
 
 
     private boolean isChatboxDestination(String destination) {

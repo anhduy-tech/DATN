@@ -1,5 +1,7 @@
 package com.lapxpert.backend.thongke.service.impl;
 
+import com.lapxpert.backend.hoadon.dto.HoaDonDto;
+import com.lapxpert.backend.hoadon.mapper.HoaDonMapper;
 import com.lapxpert.backend.nguoidung.entity.NguoiDung;
 import com.lapxpert.backend.thongke.dto.*;
 import com.lapxpert.backend.thongke.service.ThongKeService;
@@ -653,11 +655,7 @@ public class ThongKeServiceImpl implements ThongKeService {
         };
     }
 
-    @Override
-    public List<HoaDon> layDonHangGanDay(Integer soLuong) {
-        log.debug("Getting {} recent orders", soLuong);
-        return hoaDonRepository.findTopByOrderByNgayTaoDesc(PageRequest.of(0, soLuong));
-    }
+    
 
     // ==================== SAN PHAM (PRODUCT) STATISTICS ====================
 
@@ -1236,12 +1234,13 @@ public class ThongKeServiceImpl implements ThongKeService {
         log.debug("Getting product summary for dashboard");
 
         // Get total product count
-        Long tongSoSanPham = sanPhamRepository.count();
+        // Get total active product count for dashboard
+        Long tongSoSanPham = sanPhamRepository.countByTrangThai(true);
 
         // Get products with low stock using SerialNumber status
         // Count serial numbers that are reserved or sold (approximation for low stock)
-        Long sapHetHang = serialNumberRepository.countByTrangThai(TrangThaiSerialNumber.RESERVED) +
-                         serialNumberRepository.countByTrangThai(TrangThaiSerialNumber.SOLD);
+        // Calculate low stock based on the new definition: total available serial numbers < 5
+        Long sapHetHang = serialNumberRepository.countProductsWithLowAvailableStock(5);
 
         // Get out of stock products (sold serial numbers)
         Long hetHang = serialNumberRepository.countByTrangThai(TrangThaiSerialNumber.SOLD);

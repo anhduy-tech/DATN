@@ -303,6 +303,24 @@ public interface SerialNumberRepository extends JpaRepository<SerialNumber, Long
         """, nativeQuery = true)
     List<Object[]> findLowStockVariants(@Param("threshold") Integer threshold);
 
+    /**
+     * Counts products where the total available serial numbers across all their variants is below a given threshold.
+     * This considers only 'AVAILABLE' serial numbers.
+     *
+     * @param threshold The maximum number of available serial numbers for a product to be considered low stock.
+     * @return The count of products with low available stock.
+     */
+    @Query(value = """
+        SELECT COUNT(DISTINCT sp.id)
+        FROM san_pham sp
+        JOIN san_pham_chi_tiet spct ON sp.id = spct.san_pham_id
+        LEFT JOIN serial_number sn ON spct.id = sn.san_pham_chi_tiet_id AND sn.trang_thai = 'AVAILABLE'
+        WHERE sp.trang_thai = true
+        GROUP BY sp.id
+        HAVING COUNT(sn.id) < :threshold
+        """, nativeQuery = true)
+    Long countProductsWithLowAvailableStock(@Param("threshold") Integer threshold);
+
     // Validation and Constraints
     // Note: Validation is handled at service layer and database constraint level
 
