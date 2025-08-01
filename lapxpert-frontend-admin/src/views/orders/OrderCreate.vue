@@ -5768,20 +5768,17 @@ onUnmounted(() => {
 })
 
 const sendPosUpdateAction = async () => {
-  if (!activeTab.value || !activeTab.value.sanPhamList?.length) {
-    return; // Không gửi nếu không có tab hoặc sanPhamList rỗng
-  }
 
   try {
     await sendPosUpdate({
       action: 'UPDATE_CART',
       orderId: activeTab.value.id,
-      products: activeTab.value.sanPhamList,
+      data: activeTab.value,
       timestamp: Date.now(),
     });
     logger.debug('Đã gửi cập nhật POS: UPDATE_CART', {
       orderId: activeTab.value.id,
-      products: activeTab.value.sanPhamList,
+      data: activeTab.value,
     });
   } catch (error) {
     logger.critical('Lỗi khi gửi cập nhật POS: UPDATE_CART', { error });
