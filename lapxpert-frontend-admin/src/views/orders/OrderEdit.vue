@@ -1183,7 +1183,7 @@ const _confirmDialog = inject('confirmDialog')
 const confirm = useConfirm()
 
 // Cart reservations with enhanced conflict detection
-const { reserveForCart, releaseCartReservations, releaseSpecificItems, getInventoryAvailability } = useCartReservations()
+const { reserveForCart, releaseCartReservations, releaseSpecificItems } = useCartReservations()
 
 // ENHANCEMENT: Comprehensive reservation conflict detection and prevention
 const reservationConflictDetection = {
@@ -1192,61 +1192,96 @@ const reservationConflictDetection = {
   retryDelay: 1000, // 1 second base delay
 
   /**
-   * Enhanced serial number selection validation with real-time conflict detection
-   * Prevents reservation conflicts at selection time rather than during order update
+   * FIXED: Enhanced serial number selection validation with correct API usage
+   * Uses serialNumberApi.getSerialNumbersByVariant() instead of getInventoryAvailability()
+   * Aligns with backend HoaDonService.java changes for existing vs new item distinction
    */
   async validateSerialNumberSelection(serialNumber, variantId, context = 'unknown') {
     console.log(`🔍 [CONFLICT DETECTION] Starting validation for serial ${serialNumber} (context: ${context})`)
 
     try {
       // Step 1: Check if serial number is already in current cart
+      const serialValue = serialNumber.serialNumberValue || serialNumber.serialNumber || serialNumber
       const existingInCart = currentOrder.value?.sanPhamList?.find(
         (item) =>
           item.sanPhamChiTiet?.serialNumberId === serialNumber.id ||
-          item.sanPhamChiTiet?.serialNumber === serialNumber.serialNumberValue ||
-          item.sanPhamChiTiet?.serialNumber === serialNumber.serialNumber
+          item.sanPhamChiTiet?.serialNumber === serialValue ||
+          item.serialNumber === serialValue
       )
 
       if (existingInCart) {
         throw new Error(`Serial number đã có trong giỏ hàng hiện tại`)
       }
 
-      // Step 2: Get real-time inventory availability
-      console.log(`🔍 [CONFLICT DETECTION] Checking real-time availability for variant ${variantId}`)
-      const availability = await getInventoryAvailability(variantId)
+      // Step 2: FIXED - Get actual serial numbers with status information
+      console.log(`🔍 [CONFLICT DETECTION] Fetching serial numbers for variant ${variantId}`)
+      const serialNumbers = await serialNumberApi.getSerialNumbersByVariant(variantId)
 
-      if (!availability) {
-        throw new Error(`Không thể kiểm tra tình trạng tồn kho`)
+      if (!serialNumbers || !Array.isArray(serialNumbers)) {
+        throw new Error(`Không thể tải danh sách serial numbers`)
       }
 
-      // Step 3: Check if specific serial number is available
-      const serialValue = serialNumber.serialNumberValue || serialNumber.serialNumber
-      const isAvailable = availability.available && availability.available.includes(serialNumber.id)
+      // Step 3: Find the specific serial number and check its status
+      const targetSerial = serialNumbers.find(s =>
+        s.id === serialNumber.id ||
+        s.serialNumberValue === serialValue ||
+        s.serialNumber === serialValue
+      )
 
-      if (!isAvailable) {
-        // Check if it's reserved for this order (which would be acceptable)
-        const isReservedForThisOrder = availability.reservedForSession &&
-                                     availability.reservedForSession[orderId.value] &&
-                                     availability.reservedForSession[orderId.value].includes(serialNumber.id)
+      if (!targetSerial) {
+        throw new Error(`Serial number ${serialValue} không tồn tại trong hệ thống`)
+      }
 
-        if (!isReservedForThisOrder) {
-          throw new Error(`Serial number ${serialValue} không khả dụng hoặc đã được đặt trước bởi người khác`)
+      console.log(`🔍 [CONFLICT DETECTION] Found serial number:`, {
+        id: targetSerial.id,
+        serialNumberValue: targetSerial.serialNumberValue,
+        trangThai: targetSerial.trangThai,
+        donHangDatTruoc: targetSerial.donHangDatTruoc
+      })
+
+      // Step 4: Check serial number status and availability
+      if (targetSerial.trangThai === 'AVAILABLE') {
+        console.log(`✅ [CONFLICT DETECTION] Serial number ${serialValue} is AVAILABLE`)
+        return {
+          success: true,
+          serialNumber: targetSerial,
+          status: 'available'
         }
       }
 
-      console.log(`✅ [CONFLICT DETECTION] Serial number ${serialValue} validation passed`)
-      return {
-        success: true,
-        serialNumber: serialNumber,
-        availability: availability
+      // Step 5: Handle RESERVED status - acceptable if reserved for current order
+      if (targetSerial.trangThai === 'RESERVED') {
+        const isReservedForThisOrder = targetSerial.donHangDatTruoc === orderId.value ||
+                                      targetSerial.donHangDatTruoc === orderId.value?.toString()
+
+        if (isReservedForThisOrder) {
+          console.log(`✅ [CONFLICT DETECTION] Serial number ${serialValue} is RESERVED for current order`)
+          return {
+            success: true,
+            serialNumber: targetSerial,
+            status: 'reserved_for_order'
+          }
+        } else {
+          throw new Error(`Serial number ${serialValue} đã được đặt trước bởi đơn hàng khác`)
+        }
       }
 
+      // Step 6: Handle SOLD status - not available
+      if (targetSerial.trangThai === 'SOLD') {
+        throw new Error(`Serial number ${serialValue} đã được bán`)
+      }
+
+      // Step 7: Handle other statuses
+      throw new Error(`Serial number ${serialValue} không khả dụng (${targetSerial.trangThai})`)
+
     } catch (error) {
-      console.error(`❌ [CONFLICT DETECTION] Validation failed for serial ${serialNumber.serialNumberValue || serialNumber.serialNumber}:`, error)
+      const serialValue = serialNumber.serialNumberValue || serialNumber.serialNumber || serialNumber
+      console.error(`❌ [CONFLICT DETECTION] Validation failed for serial ${serialValue}:`, error)
       return {
         success: false,
         error: error.message,
-        serialNumber: serialNumber
+        serialNumber: serialNumber,
+        context: context
       }
     }
   },
@@ -1283,7 +1318,8 @@ const reservationConflictDetection = {
 
         const result = await reserveForCart(reservationRequest)
 
-        if (result && result.thanhCong) {
+        // FIXED: Use correct validation path - check result.data.thanhCong instead of result.thanhCong
+        if (result && result.data && result.data.thanhCong) {
           console.log(`✅ [RETRY MECHANISM] Reservation successful on attempt ${attempt}`)
 
           // Reset service availability flag on success
@@ -1297,9 +1333,12 @@ const reservationConflictDetection = {
             conflictDetected: false
           }
 
-          return result
+          // Return the actual reservation data for consistency
+          return result.data
         } else {
-          throw new Error(result?.thongBao || 'Reservation failed without specific error')
+          // Use the correct error message path - check result.data.thongBao first
+          const errorMessage = result?.data?.thongBao || result?.message || 'Reservation failed without specific error'
+          throw new Error(errorMessage)
         }
 
       } catch (error) {
