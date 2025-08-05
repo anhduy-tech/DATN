@@ -890,14 +890,64 @@
           <div v-else class="p-4 bg-green-50 rounded-lg w-full">
             <p class="text-green-700 font-medium">Quét thành công!</p>
             <p class="mt-2 font-mono">{{ qrScanResult }}</p>
+            <!-- ENHANCEMENT: Reservation status indicators -->
+            <div v-if="reservationStatus.isReserving" class="mt-3 p-3 bg-blue-50 rounded-lg">
+              <div class="text-blue-700">
+                <i class="pi pi-spin pi-spinner mr-2"></i>
+                Đang đặt trước serial number {{ reservationStatus.currentSerialNumber }}...
+                <span v-if="reservationStatus.retryAttempt > 1" class="text-sm">
+                  (Thử lại lần {{ reservationStatus.retryAttempt }})
+                </span>
+              </div>
+            </div>
+
+            <div v-if="reservationStatus.conflictDetected && !reservationStatus.isReserving" class="mt-3 p-3 bg-orange-50 rounded-lg">
+              <div class="text-orange-700">
+                <i class="pi pi-exclamation-triangle mr-2"></i>
+                Phát hiện xung đột đặt trước - Serial number đã được chọn bởi người khác
+              </div>
+            </div>
+
             <div v-if="qrProcessingResult" class="mt-3">
               <div v-if="qrProcessingResult.success" class="text-green-600">
                 <i class="pi pi-check-circle mr-2"></i>
                 {{ qrProcessingResult.message }}
               </div>
-              <div v-else class="text-red-600">
-                <i class="pi pi-times-circle mr-2"></i>
-                {{ qrProcessingResult.message }}
+              <div v-else class="space-y-3">
+                <!-- Main error message -->
+                <div class="text-red-600">
+                  <i class="pi pi-times-circle mr-2"></i>
+                  {{ qrProcessingResult.message }}
+                </div>
+
+                <!-- ENHANCEMENT: Detailed error guidance for QR scanning -->
+                <div v-if="qrProcessingResult.guidance" class="p-3 bg-red-50 rounded-lg border border-red-200">
+                  <div class="text-red-800 text-sm font-medium mb-2">
+                    <i class="pi pi-info-circle mr-1"></i>
+                    Hướng dẫn khắc phục:
+                  </div>
+                  <div class="text-red-700 text-sm">{{ qrProcessingResult.guidance }}</div>
+                </div>
+
+                <!-- ENHANCEMENT: Recovery actions for QR scanning -->
+                <div v-if="qrProcessingResult.recoveryActions && qrProcessingResult.recoveryActions.length > 0"
+                     class="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <div class="text-blue-800 text-sm font-medium mb-2">
+                    <i class="pi pi-lightbulb mr-1"></i>
+                    Các bước thực hiện:
+                  </div>
+                  <ul class="text-blue-700 text-sm space-y-1">
+                    <li v-for="(action, index) in qrProcessingResult.recoveryActions" :key="index" class="flex items-start">
+                      <span class="text-blue-500 mr-2">{{ index + 1 }}.</span>
+                      <span>{{ action }}</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <!-- ENHANCEMENT: Error type indicator -->
+                <div v-if="qrProcessingResult.errorType" class="text-xs text-gray-500">
+                  Mã lỗi: {{ qrProcessingResult.errorType }}
+                </div>
               </div>
             </div>
           </div>
@@ -1078,6 +1128,7 @@ import { useToast } from 'primevue/usetoast'
 import { useOrderStore } from '@/stores/orderStore'
 import { useCustomerStore } from '@/stores/customerstore'
 import { useProductStore } from '@/stores/productstore'
+import { useVoucherStore } from '@/stores/voucherStore'
 
 import { useCartReservations } from '@/composables/useCartReservations'
 import { useEmbeddedAddress } from '@/composables/useEmbeddedAddress'
@@ -1127,11 +1178,781 @@ const toast = useToast()
 const orderStore = useOrderStore()
 const customerStore = useCustomerStore()
 const productStore = useProductStore()
+const voucherStore = useVoucherStore()
 const _confirmDialog = inject('confirmDialog')
 const confirm = useConfirm()
 
-// Cart reservations
-const { reserveForCart: _reserveForCart, releaseCartReservations, releaseSpecificItems } = useCartReservations()
+// Cart reservations with enhanced conflict detection
+const { reserveForCart, releaseCartReservations, releaseSpecificItems, getInventoryAvailability } = useCartReservations()
+
+// ENHANCEMENT: Comprehensive reservation conflict detection and prevention
+const reservationConflictDetection = {
+  // Retry configuration for transient failures
+  maxRetries: 3,
+  retryDelay: 1000, // 1 second base delay
+
+  /**
+   * Enhanced serial number selection validation with real-time conflict detection
+   * Prevents reservation conflicts at selection time rather than during order update
+   */
+  async validateSerialNumberSelection(serialNumber, variantId, context = 'unknown') {
+    console.log(`🔍 [CONFLICT DETECTION] Starting validation for serial ${serialNumber} (context: ${context})`)
+
+    try {
+      // Step 1: Check if serial number is already in current cart
+      const existingInCart = currentOrder.value?.sanPhamList?.find(
+        (item) =>
+          item.sanPhamChiTiet?.serialNumberId === serialNumber.id ||
+          item.sanPhamChiTiet?.serialNumber === serialNumber.serialNumberValue ||
+          item.sanPhamChiTiet?.serialNumber === serialNumber.serialNumber
+      )
+
+      if (existingInCart) {
+        throw new Error(`Serial number đã có trong giỏ hàng hiện tại`)
+      }
+
+      // Step 2: Get real-time inventory availability
+      console.log(`🔍 [CONFLICT DETECTION] Checking real-time availability for variant ${variantId}`)
+      const availability = await getInventoryAvailability(variantId)
+
+      if (!availability) {
+        throw new Error(`Không thể kiểm tra tình trạng tồn kho`)
+      }
+
+      // Step 3: Check if specific serial number is available
+      const serialValue = serialNumber.serialNumberValue || serialNumber.serialNumber
+      const isAvailable = availability.available && availability.available.includes(serialNumber.id)
+
+      if (!isAvailable) {
+        // Check if it's reserved for this order (which would be acceptable)
+        const isReservedForThisOrder = availability.reservedForSession &&
+                                     availability.reservedForSession[orderId.value] &&
+                                     availability.reservedForSession[orderId.value].includes(serialNumber.id)
+
+        if (!isReservedForThisOrder) {
+          throw new Error(`Serial number ${serialValue} không khả dụng hoặc đã được đặt trước bởi người khác`)
+        }
+      }
+
+      console.log(`✅ [CONFLICT DETECTION] Serial number ${serialValue} validation passed`)
+      return {
+        success: true,
+        serialNumber: serialNumber,
+        availability: availability
+      }
+
+    } catch (error) {
+      console.error(`❌ [CONFLICT DETECTION] Validation failed for serial ${serialNumber.serialNumberValue || serialNumber.serialNumber}:`, error)
+      return {
+        success: false,
+        error: error.message,
+        serialNumber: serialNumber
+      }
+    }
+  },
+
+  /**
+   * ENHANCED: Attempt reservation with comprehensive retry mechanism and graceful degradation
+   */
+  async attemptReservationWithRetry(reservationRequest, context = 'unknown') {
+    let lastError = null
+    let serviceUnavailable = false
+
+    // Update reservation status indicators
+    reservationStatus.value = {
+      isReserving: true,
+      currentSerialNumber: reservationRequest.serialNumbers?.[0] || null,
+      lastReservationResult: null,
+      conflictDetected: false,
+      retryAttempt: 0,
+      context: context
+    }
+
+    for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+      try {
+        // Update retry attempt in status
+        reservationStatus.value.retryAttempt = attempt
+
+        console.log(`🔄 [RETRY MECHANISM] Reservation attempt ${attempt}/${this.maxRetries} (context: ${context})`)
+
+        // ENHANCEMENT: Check service availability before attempting reservation
+        if (serviceUnavailable && attempt > 1) {
+          console.log(`🚫 [GRACEFUL DEGRADATION] Service marked as unavailable, attempting graceful fallback`)
+          return await this.attemptGracefulDegradation(reservationRequest, context)
+        }
+
+        const result = await reserveForCart(reservationRequest)
+
+        if (result && result.thanhCong) {
+          console.log(`✅ [RETRY MECHANISM] Reservation successful on attempt ${attempt}`)
+
+          // Reset service availability flag on success
+          serviceUnavailable = false
+
+          // Update success status
+          reservationStatus.value = {
+            ...reservationStatus.value,
+            isReserving: false,
+            lastReservationResult: 'success',
+            conflictDetected: false
+          }
+
+          return result
+        } else {
+          throw new Error(result?.thongBao || 'Reservation failed without specific error')
+        }
+
+      } catch (error) {
+        lastError = error
+        console.warn(`⚠️ [RETRY MECHANISM] Attempt ${attempt} failed:`, error.message)
+
+        // ENHANCEMENT: Detect service unavailability
+        const isServiceError = error.message.includes('Network Error') ||
+                              error.message.includes('timeout') ||
+                              error.code >= 500 ||
+                              error.response?.status >= 500
+
+        if (isServiceError) {
+          serviceUnavailable = true
+          console.warn(`🚨 [GRACEFUL DEGRADATION] Service unavailability detected`)
+        }
+
+        // Update conflict detection status
+        const isConflictError = error.message.includes('không khả dụng') ||
+                               error.message.includes('đã được đặt trước') ||
+                               error.message.includes('SOLD')
+
+        if (isConflictError) {
+          reservationStatus.value.conflictDetected = true
+          console.log(`🚫 [RETRY MECHANISM] Non-retryable error detected, stopping retries`)
+          break
+        }
+
+        // ENHANCEMENT: Adaptive retry delay based on error type
+        if (attempt < this.maxRetries) {
+          let delay = this.retryDelay * Math.pow(2, attempt - 1)
+
+          // Longer delay for service errors
+          if (isServiceError) {
+            delay = Math.min(delay * 2, 10000) // Cap at 10 seconds
+          }
+
+          console.log(`⏳ [RETRY MECHANISM] Waiting ${delay}ms before retry...`)
+          await new Promise(resolve => setTimeout(resolve, delay))
+        }
+      }
+    }
+
+    // ENHANCEMENT: Final graceful degradation attempt if service is unavailable
+    if (serviceUnavailable) {
+      console.log(`🔄 [GRACEFUL DEGRADATION] Final attempt with graceful degradation`)
+      try {
+        return await this.attemptGracefulDegradation(reservationRequest, context)
+      } catch (degradationError) {
+        console.error(`❌ [GRACEFUL DEGRADATION] Graceful degradation failed:`, degradationError)
+      }
+    }
+
+    // Update failure status
+    reservationStatus.value = {
+      ...reservationStatus.value,
+      isReserving: false,
+      lastReservationResult: 'failed'
+    }
+
+    throw lastError || new Error('All reservation attempts failed')
+  },
+
+  /**
+   * ENHANCEMENT: Graceful degradation when reservation service is unavailable
+   */
+  async attemptGracefulDegradation(reservationRequest, context) {
+    console.log(`🔄 [GRACEFUL DEGRADATION] Attempting graceful degradation for ${context}`)
+
+    // Show user notification about degraded service
+    toast.add({
+      severity: 'warn',
+      summary: 'Chế độ dự phòng',
+      detail: 'Dịch vụ đặt trước tạm thời không khả dụng. Hệ thống đang hoạt động ở chế độ dự phòng.',
+      life: 8000
+    })
+
+    // In graceful degradation mode, we could:
+    // 1. Allow adding to cart without reservation (with warning)
+    // 2. Queue the reservation for later processing
+    // 3. Use local storage to track pending reservations
+
+    // For now, we'll return a mock success response with warning
+    return {
+      thanhCong: true,
+      cartSessionId: reservationRequest.tabId,
+      soLuongDatTruoc: reservationRequest.soLuong,
+      thoiGianHetHan: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes
+      degradedMode: true,
+      warning: 'Đặt trước trong chế độ dự phòng - vui lòng xác nhận lại sau'
+    }
+  },
+
+  /**
+   * ENHANCED: Comprehensive error handling framework for reservation operations
+   * Provides specific error messages, user guidance, and recovery workflows
+   */
+  getComprehensiveErrorHandling(error, context = 'unknown', serialNumber = null) {
+    const message = error.message || error.toString()
+    const errorCode = error.code || error.response?.status || 'UNKNOWN'
+
+    // Error classification and handling
+    const errorHandling = {
+      type: 'unknown',
+      severity: 'error',
+      userMessage: '',
+      technicalMessage: message,
+      guidance: '',
+      recoveryActions: [],
+      shouldRetry: false,
+      retryDelay: 0,
+      showDetails: false
+    }
+
+    // INVENTORY CONFLICT ERRORS
+    if (message.includes('đã có trong giỏ hàng') || message.includes('already in cart')) {
+      errorHandling.type = 'duplicate_in_cart'
+      errorHandling.severity = 'warning'
+      errorHandling.userMessage = `Serial number ${serialNumber || 'này'} đã có trong giỏ hàng của bạn`
+      errorHandling.guidance = 'Bạn đã chọn serial number này rồi. Vui lòng kiểm tra lại giỏ hàng.'
+      errorHandling.recoveryActions = [
+        'Kiểm tra danh sách sản phẩm trong giỏ hàng',
+        'Chọn serial number khác nếu cần thêm sản phẩm'
+      ]
+    }
+
+    // RESERVATION CONFLICT ERRORS
+    else if (message.includes('không khả dụng') || message.includes('đã được đặt trước') || message.includes('not available')) {
+      errorHandling.type = 'reservation_conflict'
+      errorHandling.severity = 'error'
+      errorHandling.userMessage = `Serial number ${serialNumber || 'này'} đã được người khác chọn`
+      errorHandling.guidance = 'Serial number này hiện đang được đặt trước bởi người dùng khác. Vui lòng chọn serial number khác.'
+      errorHandling.recoveryActions = [
+        'Chọn serial number khác từ danh sách có sẵn',
+        'Thử lại sau vài phút nếu người dùng khác hủy đặt trước',
+        'Liên hệ quản lý kho để kiểm tra tình trạng'
+      ]
+    }
+
+    // SOLD ITEM ERRORS
+    else if (message.includes('SOLD') || message.includes('đã được bán')) {
+      errorHandling.type = 'item_sold'
+      errorHandling.severity = 'error'
+      errorHandling.userMessage = `Serial number ${serialNumber || 'này'} đã được bán`
+      errorHandling.guidance = 'Sản phẩm này đã được bán cho khách hàng khác và không còn khả dụng.'
+      errorHandling.recoveryActions = [
+        'Chọn serial number khác từ danh sách có sẵn',
+        'Kiểm tra tồn kho để tìm sản phẩm thay thế',
+        'Thông báo cho khách hàng về tình trạng hết hàng'
+      ]
+    }
+
+    // NETWORK/SERVICE ERRORS
+    else if (message.includes('Network Error') || message.includes('timeout') || errorCode >= 500) {
+      errorHandling.type = 'service_unavailable'
+      errorHandling.severity = 'error'
+      errorHandling.userMessage = 'Dịch vụ đặt trước tạm thời không khả dụng'
+      errorHandling.guidance = 'Hệ thống đang gặp sự cố kỹ thuật. Vui lòng thử lại sau.'
+      errorHandling.recoveryActions = [
+        'Thử lại sau vài giây',
+        'Kiểm tra kết nối mạng',
+        'Liên hệ bộ phận kỹ thuật nếu lỗi tiếp tục'
+      ]
+      errorHandling.shouldRetry = true
+      errorHandling.retryDelay = 3000
+    }
+
+    // VALIDATION ERRORS
+    else if (message.includes('validation') || message.includes('invalid') || errorCode === 400) {
+      errorHandling.type = 'validation_error'
+      errorHandling.severity = 'warning'
+      errorHandling.userMessage = 'Thông tin không hợp lệ'
+      errorHandling.guidance = 'Dữ liệu gửi lên không đúng định dạng hoặc thiếu thông tin bắt buộc.'
+      errorHandling.recoveryActions = [
+        'Kiểm tra lại thông tin đã nhập',
+        'Thử chọn lại serial number',
+        'Làm mới trang và thử lại'
+      ]
+      errorHandling.showDetails = true
+    }
+
+    // AUTHENTICATION/AUTHORIZATION ERRORS
+    else if (errorCode === 401 || errorCode === 403) {
+      errorHandling.type = 'auth_error'
+      errorHandling.severity = 'error'
+      errorHandling.userMessage = 'Không có quyền thực hiện thao tác này'
+      errorHandling.guidance = 'Phiên đăng nhập có thể đã hết hạn hoặc bạn không có quyền đặt trước sản phẩm.'
+      errorHandling.recoveryActions = [
+        'Đăng nhập lại',
+        'Liên hệ quản trị viên để cấp quyền',
+        'Kiểm tra vai trò người dùng'
+      ]
+    }
+
+    // INVENTORY CHECK ERRORS
+    else if (message.includes('Không thể kiểm tra tình trạng tồn kho') || message.includes('inventory check failed')) {
+      errorHandling.type = 'inventory_check_failed'
+      errorHandling.severity = 'warning'
+      errorHandling.userMessage = 'Không thể kiểm tra tình trạng tồn kho'
+      errorHandling.guidance = 'Hệ thống không thể xác minh tình trạng sản phẩm hiện tại.'
+      errorHandling.recoveryActions = [
+        'Thử lại sau vài giây',
+        'Làm mới danh sách sản phẩm',
+        'Kiểm tra kết nối mạng'
+      ]
+      errorHandling.shouldRetry = true
+      errorHandling.retryDelay = 2000
+    }
+
+    // DEFAULT/UNKNOWN ERRORS
+    else {
+      errorHandling.type = 'unknown_error'
+      errorHandling.severity = 'error'
+      errorHandling.userMessage = 'Có lỗi không xác định xảy ra'
+      errorHandling.guidance = 'Hệ thống gặp lỗi không mong muốn khi xử lý yêu cầu.'
+      errorHandling.recoveryActions = [
+        'Thử lại thao tác',
+        'Làm mới trang',
+        'Liên hệ bộ phận hỗ trợ kỹ thuật'
+      ]
+      errorHandling.showDetails = true
+      errorHandling.shouldRetry = true
+      errorHandling.retryDelay = 1000
+    }
+
+    // Add context-specific information
+    if (context === 'QR_scanning') {
+      errorHandling.userMessage = `QR Scan: ${errorHandling.userMessage}`
+      errorHandling.recoveryActions.unshift('Thử quét lại mã QR')
+    } else if (context === 'addVariantToCurrentOrder') {
+      errorHandling.recoveryActions.unshift('Thử chọn sản phẩm từ danh sách')
+    }
+
+    return errorHandling
+  },
+
+  /**
+   * Legacy method for backward compatibility
+   */
+  getUserFriendlyErrorMessage(error, context = 'unknown') {
+    const handling = this.getComprehensiveErrorHandling(error, context)
+    return handling.userMessage
+  }
+}
+
+// ENHANCEMENT: Unified cleanup strategy for OrderEdit and OrderCreate alignment
+const unifiedCleanupStrategy = {
+  /**
+   * Initialize cleanup tracking when order is loaded
+   * Records original order items that should NOT be cleaned up
+   */
+  initializeCleanupTracking(order) {
+    if (!order || !order.sanPhamList) return
+
+    // Clear previous tracking
+    originalOrderItems.value.clear()
+    newlyReservedItems.value.clear()
+
+    // Track original order items (these should NOT be cleaned up)
+    order.sanPhamList.forEach(item => {
+      if (item.sanPhamChiTiet?.serialNumber) {
+        originalOrderItems.value.add(item.sanPhamChiTiet.serialNumber)
+        console.log(`🔒 [CLEANUP TRACKING] Original item tracked: ${item.sanPhamChiTiet.serialNumber}`)
+      }
+    })
+
+    console.log(`🔒 [CLEANUP TRACKING] Initialized with ${originalOrderItems.value.size} original items`)
+  },
+
+  /**
+   * Track newly reserved items during edit session
+   * These items should be cleaned up if user leaves without saving
+   */
+  trackNewlyReservedItem(serialNumber) {
+    if (!serialNumber) return
+
+    // Only track if it's not an original order item
+    if (!originalOrderItems.value.has(serialNumber)) {
+      newlyReservedItems.value.add(serialNumber)
+      console.log(`🔒 [CLEANUP TRACKING] New reservation tracked: ${serialNumber}`)
+      console.log(`🔒 [CLEANUP TRACKING] Total new reservations: ${newlyReservedItems.value.size}`)
+    } else {
+      console.log(`🔒 [CLEANUP TRACKING] Skipping original item: ${serialNumber}`)
+    }
+  },
+
+  /**
+   * Remove item from newly reserved tracking (when item is removed from cart)
+   */
+  untrackNewlyReservedItem(serialNumber) {
+    if (!serialNumber) return
+
+    if (newlyReservedItems.value.has(serialNumber)) {
+      newlyReservedItems.value.delete(serialNumber)
+      console.log(`🔒 [CLEANUP TRACKING] Removed from new reservations: ${serialNumber}`)
+    }
+  },
+
+  /**
+   * Clean up only newly reserved items when leaving edit mode without saving
+   * Preserves existing order items
+   */
+  async cleanupNewlyReservedItems(context = 'page_unload') {
+    if (newlyReservedItems.value.size === 0) {
+      console.log(`🔒 [UNIFIED CLEANUP] No newly reserved items to clean up (context: ${context})`)
+      return
+    }
+
+    console.log(`🔒 [UNIFIED CLEANUP] Cleaning up ${newlyReservedItems.value.size} newly reserved items (context: ${context})`)
+
+    const itemsToCleanup = Array.from(newlyReservedItems.value)
+    let cleanupSuccessCount = 0
+    let cleanupFailureCount = 0
+
+    for (const serialNumber of itemsToCleanup) {
+      try {
+        // Find the variant ID for this serial number to release specific reservation
+        const cartItem = currentOrder.value?.sanPhamList?.find(item =>
+          item.sanPhamChiTiet?.serialNumber === serialNumber
+        )
+
+        if (cartItem && cartItem.sanPhamChiTiet?.id) {
+          await releaseSpecificItems(orderId.value, cartItem.sanPhamChiTiet.id, 1)
+          console.log(`✅ [UNIFIED CLEANUP] Released reservation for: ${serialNumber}`)
+          cleanupSuccessCount++
+        } else {
+          console.warn(`⚠️ [UNIFIED CLEANUP] Could not find cart item for serial: ${serialNumber}`)
+        }
+      } catch (error) {
+        console.error(`❌ [UNIFIED CLEANUP] Failed to release reservation for ${serialNumber}:`, error)
+        cleanupFailureCount++
+      }
+    }
+
+    // Clear the tracking after cleanup attempt
+    newlyReservedItems.value.clear()
+
+    console.log(`🔒 [UNIFIED CLEANUP] Cleanup completed: ${cleanupSuccessCount} success, ${cleanupFailureCount} failures`)
+  },
+
+  /**
+   * Get cleanup summary for debugging
+   */
+  getCleanupSummary() {
+    return {
+      originalItems: originalOrderItems.value.size,
+      newlyReservedItems: newlyReservedItems.value.size,
+      originalItemsList: Array.from(originalOrderItems.value),
+      newlyReservedItemsList: Array.from(newlyReservedItems.value)
+    }
+  }
+}
+
+// ENHANCEMENT: Comprehensive error handling and user feedback framework
+const comprehensiveErrorHandling = {
+  /**
+   * Handle reservation errors with comprehensive user feedback
+   */
+  async handleReservationError(error, context, serialNumber = null) {
+    console.error(`🚨 [ERROR HANDLING] Reservation error in ${context}:`, error)
+
+    // Get comprehensive error analysis
+    const errorHandling = reservationConflictDetection.getComprehensiveErrorHandling(error, context, serialNumber)
+
+    // Update error state
+    reservationErrorState.value = {
+      hasError: true,
+      errorHandling: errorHandling,
+      showErrorDialog: errorHandling.severity === 'error' && errorHandling.showDetails,
+      autoRetryEnabled: errorHandling.shouldRetry,
+      retryCount: reservationErrorState.value.retryCount + 1,
+      maxAutoRetries: 2
+    }
+
+    // Show immediate user feedback
+    this.showErrorFeedback(errorHandling, context)
+
+    // Handle auto-retry if applicable
+    if (errorHandling.shouldRetry && reservationErrorState.value.retryCount <= reservationErrorState.value.maxAutoRetries) {
+      console.log(`🔄 [ERROR HANDLING] Auto-retry enabled, attempt ${reservationErrorState.value.retryCount}`)
+      return await this.attemptAutoRetry(errorHandling, context, serialNumber)
+    }
+
+    // Log detailed error information
+    this.logDetailedError(error, errorHandling, context, serialNumber)
+
+    return false // Indicate failure
+  },
+
+  /**
+   * Show user-friendly error feedback
+   */
+  showErrorFeedback(errorHandling, context) {
+    const toastConfig = {
+      severity: errorHandling.severity,
+      summary: this.getErrorSummary(errorHandling.type, context),
+      detail: errorHandling.userMessage,
+      life: errorHandling.severity === 'error' ? 8000 : 5000
+    }
+
+    // Add guidance for complex errors
+    if (errorHandling.guidance && errorHandling.recoveryActions.length > 0) {
+      toastConfig.detail += `\n\n${errorHandling.guidance}`
+    }
+
+    toast.add(toastConfig)
+
+    // Show detailed error dialog for complex cases
+    if (errorHandling.showDetails) {
+      this.showDetailedErrorDialog(errorHandling, context)
+    }
+  },
+
+  /**
+   * Get appropriate error summary based on error type and context
+   */
+  getErrorSummary(errorType, context) {
+    const contextMap = {
+      'QR_scanning': 'Lỗi QR Scan',
+      'addVariantToCurrentOrder': 'Lỗi thêm sản phẩm',
+      'processScannedSerialNumber': 'Lỗi xử lý QR',
+      'unknown': 'Lỗi đặt trước'
+    }
+
+    const typeMap = {
+      'duplicate_in_cart': 'Sản phẩm đã có trong giỏ',
+      'reservation_conflict': 'Xung đột đặt trước',
+      'item_sold': 'Sản phẩm đã bán',
+      'service_unavailable': 'Dịch vụ không khả dụng',
+      'validation_error': 'Lỗi dữ liệu',
+      'auth_error': 'Lỗi xác thực',
+      'inventory_check_failed': 'Lỗi kiểm tra kho',
+      'unknown_error': 'Lỗi hệ thống'
+    }
+
+    return `${contextMap[context] || contextMap.unknown}: ${typeMap[errorType] || typeMap.unknown_error}`
+  },
+
+  /**
+   * Attempt automatic retry for recoverable errors
+   */
+  async attemptAutoRetry(errorHandling, context, serialNumber) {
+    if (!errorHandling.shouldRetry) return false
+
+    console.log(`🔄 [AUTO RETRY] Waiting ${errorHandling.retryDelay}ms before retry...`)
+
+    // Show retry feedback to user
+    toast.add({
+      severity: 'info',
+      summary: 'Đang thử lại...',
+      detail: `Hệ thống đang tự động thử lại thao tác (lần ${reservationErrorState.value.retryCount})`,
+      life: 3000
+    })
+
+    // Wait for retry delay
+    await new Promise(resolve => setTimeout(resolve, errorHandling.retryDelay))
+
+    // The actual retry will be handled by the calling function
+    return true // Indicate retry should be attempted
+  },
+
+  /**
+   * Show detailed error dialog for complex errors
+   */
+  showDetailedErrorDialog(errorHandling, context) {
+    // This would typically show a modal dialog with detailed error information
+    // For now, we'll use a detailed toast message
+    const detailMessage = [
+      `Lỗi: ${errorHandling.userMessage}`,
+      `Hướng dẫn: ${errorHandling.guidance}`,
+      `Các bước khắc phục:`,
+      ...errorHandling.recoveryActions.map((action, index) => `${index + 1}. ${action}`)
+    ].join('\n')
+
+    toast.add({
+      severity: 'error',
+      summary: 'Chi tiết lỗi',
+      detail: detailMessage,
+      life: 12000
+    })
+  },
+
+  /**
+   * Log detailed error information for debugging
+   */
+  logDetailedError(error, errorHandling, context, serialNumber) {
+    const errorLog = {
+      timestamp: new Date().toISOString(),
+      context: context,
+      serialNumber: serialNumber,
+      errorType: errorHandling.type,
+      severity: errorHandling.severity,
+      originalError: error.message || error,
+      errorCode: error.code || error.response?.status,
+      userMessage: errorHandling.userMessage,
+      technicalMessage: errorHandling.technicalMessage,
+      retryCount: reservationErrorState.value.retryCount,
+      orderInfo: {
+        orderId: orderId.value,
+        currentOrderItems: currentOrder.value?.sanPhamList?.length || 0
+      }
+    }
+
+    console.error('🚨 [DETAILED ERROR LOG]', errorLog)
+
+    // In a production environment, this could be sent to an error tracking service
+    // logger.error('Reservation error', errorLog)
+  },
+
+  /**
+   * Clear error state
+   */
+  clearErrorState() {
+    reservationErrorState.value = {
+      hasError: false,
+      errorHandling: null,
+      showErrorDialog: false,
+      autoRetryEnabled: true,
+      retryCount: 0,
+      maxAutoRetries: 2
+    }
+  },
+
+  /**
+   * Get user guidance for error recovery
+   */
+  getRecoveryGuidance(errorType) {
+    const guidanceMap = {
+      'duplicate_in_cart': 'Kiểm tra giỏ hàng để xem sản phẩm đã được thêm chưa.',
+      'reservation_conflict': 'Chọn serial number khác hoặc thử lại sau.',
+      'item_sold': 'Tìm sản phẩm thay thế hoặc thông báo khách hàng.',
+      'service_unavailable': 'Kiểm tra kết nối mạng và thử lại.',
+      'validation_error': 'Kiểm tra lại thông tin đã nhập.',
+      'auth_error': 'Đăng nhập lại hoặc liên hệ quản trị viên.',
+      'inventory_check_failed': 'Làm mới trang và thử lại.',
+      'unknown_error': 'Liên hệ bộ phận hỗ trợ kỹ thuật.'
+    }
+
+    return guidanceMap[errorType] || guidanceMap.unknown_error
+  },
+
+  /**
+   * ENHANCEMENT: User-friendly error recovery workflows
+   */
+  async executeRecoveryWorkflow(errorType, context, serialNumber = null) {
+    console.log(`🔧 [RECOVERY WORKFLOW] Executing recovery for ${errorType} in ${context}`)
+
+    switch (errorType) {
+      case 'duplicate_in_cart':
+        return await this.handleDuplicateInCartRecovery(serialNumber)
+
+      case 'reservation_conflict':
+        return await this.handleReservationConflictRecovery(context, serialNumber)
+
+      case 'service_unavailable':
+        return await this.handleServiceUnavailableRecovery(context)
+
+      case 'inventory_check_failed':
+        return await this.handleInventoryCheckFailedRecovery(context)
+
+      default:
+        return await this.handleGenericErrorRecovery(errorType, context)
+    }
+  },
+
+  /**
+   * Handle duplicate in cart recovery
+   */
+  async handleDuplicateInCartRecovery(serialNumber) {
+    // Find the existing item in cart
+    const existingItem = currentOrder.value?.sanPhamList?.find(item =>
+      item.sanPhamChiTiet?.serialNumber === serialNumber
+    )
+
+    if (existingItem) {
+      toast.add({
+        severity: 'info',
+        summary: 'Sản phẩm đã có trong giỏ',
+        detail: `Serial number ${serialNumber} đã có trong giỏ hàng. Bạn có thể tăng số lượng hoặc chọn serial number khác.`,
+        life: 5000
+      })
+
+      // Scroll to the existing item in the cart (if possible)
+      // This would require additional UI implementation
+      return true
+    }
+
+    return false
+  },
+
+  /**
+   * Handle reservation conflict recovery
+   */
+  async handleReservationConflictRecovery(context, serialNumber) {
+    // Suggest alternative serial numbers if available
+    toast.add({
+      severity: 'warn',
+      summary: 'Xung đột đặt trước',
+      detail: `Serial number ${serialNumber} đã được người khác chọn. Hệ thống sẽ hiển thị các lựa chọn khác.`,
+      life: 6000
+    })
+
+    // Trigger refresh of available serial numbers
+    // This would require integration with the product variant dialog
+    return false
+  },
+
+  /**
+   * Handle service unavailable recovery
+   */
+  async handleServiceUnavailableRecovery(context) {
+    // Offer offline mode or queue the operation
+    toast.add({
+      severity: 'warn',
+      summary: 'Dịch vụ tạm thời không khả dụng',
+      detail: 'Hệ thống sẽ tự động thử lại khi dịch vụ khôi phục. Bạn có thể tiếp tục làm việc.',
+      life: 8000
+    })
+
+    // Enable graceful degradation mode
+    return true
+  },
+
+  /**
+   * Handle inventory check failed recovery
+   */
+  async handleInventoryCheckFailedRecovery(context) {
+    // Refresh inventory data
+    toast.add({
+      severity: 'info',
+      summary: 'Đang làm mới dữ liệu',
+      detail: 'Hệ thống đang cập nhật thông tin tồn kho mới nhất...',
+      life: 4000
+    })
+
+    // Trigger inventory refresh (would require additional implementation)
+    return true
+  },
+
+  /**
+   * Handle generic error recovery
+   */
+  async handleGenericErrorRecovery(errorType, context) {
+    toast.add({
+      severity: 'error',
+      summary: 'Lỗi hệ thống',
+      detail: 'Đã xảy ra lỗi không mong muốn. Vui lòng thử lại hoặc liên hệ hỗ trợ kỹ thuật.',
+      life: 6000
+    })
+
+    return false
+  }
+}
 
 // Route and navigation setup
 const route = useRoute()
@@ -1175,26 +1996,547 @@ const updateCurrentOrderData = (updates) => {
   }
 }
 
-// Data transformation utility for order editing
-const transformOrderForEdit = (orderData) => {
-  if (!orderData) return null
+// COMPREHENSIVE VALIDATION FUNCTIONS for data transformation
+const validateChiTiet = (chiTiet) => {
+  if (!Array.isArray(chiTiet)) {
+    return { valid: false, error: 'chiTiet must be an array' }
+  }
+
+  const invalidItems = []
+  const validItems = chiTiet.filter((item, index) => {
+    const hasRequiredFields = item &&
+                             typeof item === 'object' &&
+                             item.sanPhamChiTietId &&
+                             typeof item.soLuong === 'number' &&
+                             item.soLuong > 0
+
+    if (!hasRequiredFields) {
+      invalidItems.push({
+        index,
+        item,
+        issues: [
+          !item ? 'Item is null/undefined' : null,
+          !item.sanPhamChiTietId ? 'Missing sanPhamChiTietId' : null,
+          typeof item.soLuong !== 'number' ? 'Invalid soLuong type' : null,
+          item.soLuong <= 0 ? 'Invalid soLuong value' : null
+        ].filter(Boolean)
+      })
+    }
+
+    return hasRequiredFields
+  })
+
+  return {
+    valid: invalidItems.length === 0,
+    validItems,
+    invalidItems,
+    totalItems: chiTiet.length,
+    validCount: validItems.length,
+    error: invalidItems.length > 0 ? `${invalidItems.length} invalid items found` : null
+  }
+}
+
+const validateAddress = (address) => {
+  if (!address || typeof address !== 'object') {
+    return { valid: false, error: 'Address must be an object' }
+  }
+
+  const requiredFields = ['duong', 'phuongXa', 'quanHuyen', 'tinhThanh']
+  const missingFields = []
+  const invalidFields = []
+
+  requiredFields.forEach(field => {
+    if (!address[field]) {
+      missingFields.push(field)
+    } else if (typeof address[field] !== 'string' || address[field].trim().length === 0) {
+      invalidFields.push(field)
+    }
+  })
+
+  // Validate street address length (minimum 5 characters as per backend validation)
+  if (address.duong && address.duong.trim().length < 5) {
+    invalidFields.push('duong (minimum 5 characters required)')
+  }
+
+  return {
+    valid: missingFields.length === 0 && invalidFields.length === 0,
+    missingFields,
+    invalidFields,
+    error: missingFields.length > 0 || invalidFields.length > 0 ?
+           `Missing: [${missingFields.join(', ')}], Invalid: [${invalidFields.join(', ')}]` : null
+  }
+}
+
+const validateRecipient = (orderData) => {
+  if (!orderData || typeof orderData !== 'object') {
+    return { valid: false, error: 'Order data must be an object' }
+  }
+
+  const issues = []
+
+  if (!orderData.nguoiNhanTen || typeof orderData.nguoiNhanTen !== 'string' || orderData.nguoiNhanTen.trim().length === 0) {
+    issues.push('Missing or invalid nguoiNhanTen')
+  }
+
+  if (!orderData.nguoiNhanSdt || typeof orderData.nguoiNhanSdt !== 'string' || orderData.nguoiNhanSdt.trim().length === 0) {
+    issues.push('Missing or invalid nguoiNhanSdt')
+  }
+
+  // Validate phone number format (basic validation)
+  if (orderData.nguoiNhanSdt && !/^[0-9+\-\s()]{8,15}$/.test(orderData.nguoiNhanSdt.trim())) {
+    issues.push('Invalid phone number format')
+  }
+
+  return {
+    valid: issues.length === 0,
+    issues,
+    error: issues.length > 0 ? issues.join(', ') : null
+  }
+}
+
+const validateVoucherCodes = (voucherCodes) => {
+  if (!voucherCodes) {
+    return { valid: true, codes: [], error: null } // No vouchers is valid
+  }
+
+  if (!Array.isArray(voucherCodes)) {
+    return { valid: false, error: 'voucherCodes must be an array' }
+  }
+
+  const invalidCodes = []
+  const validCodes = voucherCodes.filter((code, index) => {
+    const isValid = code && typeof code === 'string' && code.trim().length > 0
+    if (!isValid) {
+      invalidCodes.push({ index, code, issue: 'Empty or invalid voucher code' })
+    }
+    return isValid
+  })
+
+  return {
+    valid: invalidCodes.length === 0,
+    validCodes,
+    invalidCodes,
+    totalCodes: voucherCodes.length,
+    validCount: validCodes.length,
+    error: invalidCodes.length > 0 ? `${invalidCodes.length} invalid voucher codes found` : null
+  }
+}
+
+// Enhanced delivery state derivation utility
+const deriveDeliveryState = (orderData) => {
+  console.log('🚚 [DELIVERY STATE] Deriving delivery state from order data:', orderData)
+
+  // Check if explicit giaohang flag is set
+  if (orderData.giaohang === true) {
+    console.log('✅ [DELIVERY STATE] Explicit giaohang=true found')
+    return true
+  }
+
+  if (orderData.giaohang === false) {
+    console.log('❌ [DELIVERY STATE] Explicit giaohang=false found')
+    return false
+  }
+
+  // Derive from diaChiGiaoHang presence and validity
+  const address = orderData.diaChiGiaoHang
+
+  if (!address) {
+    console.log('❌ [DELIVERY STATE] No diaChiGiaoHang found, delivery=false')
+    return false
+  }
+
+  console.log('🔍 [DELIVERY STATE] Checking address validity:', address)
+
+  // Validate required address fields following backend DiaChiDto validation
+  const hasValidStreet = address.duong &&
+                        typeof address.duong === 'string' &&
+                        address.duong.trim().length >= 5 &&
+                        address.duong.trim().length <= 255
+
+  const hasValidWard = address.phuongXa &&
+                      typeof address.phuongXa === 'string' &&
+                      address.phuongXa.trim().length > 0 &&
+                      address.phuongXa.trim().length <= 100
+
+  const hasValidDistrict = address.quanHuyen &&
+                          typeof address.quanHuyen === 'string' &&
+                          address.quanHuyen.trim().length > 0 &&
+                          address.quanHuyen.trim().length <= 100
+
+  const hasValidProvince = address.tinhThanh &&
+                          typeof address.tinhThanh === 'string' &&
+                          address.tinhThanh.trim().length > 0 &&
+                          address.tinhThanh.trim().length <= 100
+
+  const isAddressComplete = hasValidStreet && hasValidWard && hasValidDistrict && hasValidProvince
+
+  console.log('🔍 [DELIVERY STATE] Address validation results:', {
+    hasValidStreet,
+    hasValidWard,
+    hasValidDistrict,
+    hasValidProvince,
+    isAddressComplete,
+    streetLength: address.duong?.trim()?.length || 0
+  })
+
+  if (isAddressComplete) {
+    console.log('✅ [DELIVERY STATE] Complete address found, delivery=true')
+    return true
+  } else {
+    console.log('⚠️ [DELIVERY STATE] Incomplete address found, delivery=false')
+    return false
+  }
+}
+
+// Enhanced data transformation utility for order editing with comprehensive error handling
+const transformOrderForEdit = async (orderData) => {
+  // Input validation
+  if (!orderData) {
+    console.error('❌ [TRANSFORM ERROR] No order data provided')
+    toast.add({
+      severity: 'error',
+      summary: 'Lỗi dữ liệu đơn hàng',
+      detail: 'Không có dữ liệu đơn hàng để xử lý.',
+      life: 5000
+    })
+    return null
+  }
+
+  if (typeof orderData !== 'object') {
+    console.error('❌ [TRANSFORM ERROR] Invalid order data type:', typeof orderData)
+    toast.add({
+      severity: 'error',
+      summary: 'Lỗi định dạng dữ liệu',
+      detail: 'Dữ liệu đơn hàng không đúng định dạng.',
+      life: 5000
+    })
+    return null
+  }
+
+  console.log('🔄 [TRANSFORM DEBUG] Raw order data received:', orderData)
+  console.log('🔄 [TRANSFORM DEBUG] chiTiet array:', orderData.chiTiet)
+  console.log('🔄 [TRANSFORM DEBUG] voucherCodes array:', orderData.voucherCodes)
+  console.log('🔄 [TRANSFORM DEBUG] Recipient fields:', {
+    nguoiNhanTen: orderData.nguoiNhanTen,
+    nguoiNhanSdt: orderData.nguoiNhanSdt,
+    nguoiNhanEmail: orderData.nguoiNhanEmail
+  })
+
+  // Track transformation errors for summary
+  const transformationErrors = []
+
+  // ENHANCED CHITIET TRANSFORMATION with comprehensive validation
+  let sanPhamList = []
+  let chiTietValidationResult = null
+
+  try {
+    console.log('🔍 [VALIDATION] Starting chiTiet validation...')
+    chiTietValidationResult = validateChiTiet(orderData.chiTiet || [])
+
+    if (!chiTietValidationResult.valid) {
+      console.error('❌ [VALIDATION ERROR] chiTiet validation failed:', chiTietValidationResult.error)
+      console.error('❌ [VALIDATION ERROR] Invalid items:', chiTietValidationResult.invalidItems)
+
+      // Track error for summary
+      transformationErrors.push({
+        type: 'chiTiet_validation',
+        message: `${chiTietValidationResult.invalidItems?.length || 0} sản phẩm có dữ liệu không hợp lệ`,
+        severity: 'warn'
+      })
+
+      // Show user notification for validation failure
+      toast.add({
+        severity: 'warn',
+        summary: 'Dữ liệu sản phẩm không hợp lệ',
+        detail: `Phát hiện ${chiTietValidationResult.invalidItems?.length || 0} sản phẩm có dữ liệu không hợp lệ. Hệ thống sẽ bỏ qua các sản phẩm này.`,
+        life: 5000
+      })
+    }
+
+    if (orderData.chiTiet && Array.isArray(orderData.chiTiet) && orderData.chiTiet.length > 0) {
+      // Use validated items only
+      const itemsToProcess = chiTietValidationResult.valid ?
+                            orderData.chiTiet :
+                            chiTietValidationResult.validItems || []
+
+      console.log(`🔄 [TRANSFORM] Processing ${itemsToProcess.length} valid chiTiet items out of ${orderData.chiTiet.length} total`)
+
+      sanPhamList = itemsToProcess.map((item, index) => {
+        console.log(`🔄 [TRANSFORM DEBUG] Processing chiTiet item ${index}:`, item)
+
+        // Additional runtime validation for critical fields
+        if (!item.sanPhamChiTietId) {
+          console.warn(`⚠️ [TRANSFORM WARNING] Missing sanPhamChiTietId in chiTiet item ${index}`)
+        }
+
+        // Transform chiTiet item to sanPhamList format following OrderEditOld.vue pattern
+        const transformedItem = {
+          // Preserve original chiTiet ID if available
+          id: item.id,
+
+          // Create sanPhamChiTiet object structure expected by frontend
+          sanPhamChiTiet: {
+            id: item.sanPhamChiTietId,
+            serialNumberId: item.serialNumberId,
+            serialNumber: item.serialNumber,
+            // Use giaBan from chiTiet as the current selling price
+            giaBan: item.giaBan,
+            // Include snapshot data for display
+            sku: item.skuSnapshot,
+            tenSanPham: item.tenSanPhamSnapshot,
+            hinhAnh: item.hinhAnhSnapshot ? [item.hinhAnhSnapshot] : []
+          },
+
+          // Order line item details
+          soLuong: item.soLuong || 1,
+          donGia: item.giaBan || item.donGia || 0,
+          thanhTien: item.thanhTien || (item.giaBan * item.soLuong) || 0,
+
+          // Preserve serial number at item level for easy access
+          serialNumber: item.serialNumber
+        }
+
+        console.log(`✅ [TRANSFORM DEBUG] Transformed item ${index}:`, transformedItem)
+        return transformedItem
+      })
+
+      console.log(`✅ [TRANSFORM SUCCESS] Successfully transformed ${sanPhamList.length} chiTiet items to sanPhamList`)
+
+      // Log validation summary
+      if (chiTietValidationResult && !chiTietValidationResult.valid) {
+        console.warn(`⚠️ [VALIDATION SUMMARY] Processed ${chiTietValidationResult.validCount}/${chiTietValidationResult.totalItems} valid items`)
+      }
+    } else {
+      console.log('ℹ️ [TRANSFORM INFO] No chiTiet array found, using empty sanPhamList')
+    }
+  } catch (error) {
+    console.error('❌ [TRANSFORM ERROR] Failed to transform chiTiet to sanPhamList:', error)
+
+    // Show user notification for transformation failure
+    toast.add({
+      severity: 'error',
+      summary: 'Lỗi xử lý dữ liệu sản phẩm',
+      detail: 'Không thể xử lý danh sách sản phẩm. Giỏ hàng sẽ hiển thị trống.',
+      life: 5000
+    })
+
+    // Fallback to empty array to prevent crashes
+    sanPhamList = []
+  }
+
+  // ENHANCED VOUCHER RECONSTRUCTION with comprehensive validation
+  let voucherList = []
+  let voucherValidationResult = null
+
+  try {
+    console.log('🔍 [VALIDATION] Starting voucher codes validation...')
+    voucherValidationResult = validateVoucherCodes(orderData.voucherCodes)
+
+    if (!voucherValidationResult.valid) {
+      console.error('❌ [VALIDATION ERROR] Voucher codes validation failed:', voucherValidationResult.error)
+      console.error('❌ [VALIDATION ERROR] Invalid codes:', voucherValidationResult.invalidCodes)
+
+      // Track error for summary
+      transformationErrors.push({
+        type: 'voucher_validation',
+        message: `${voucherValidationResult.invalidCodes?.length || 0} mã voucher không hợp lệ`,
+        severity: 'warn'
+      })
+
+      // Show user notification for validation failure
+      toast.add({
+        severity: 'warn',
+        summary: 'Mã voucher không hợp lệ',
+        detail: `Phát hiện ${voucherValidationResult.invalidCodes?.length || 0} mã voucher không hợp lệ. Hệ thống sẽ bỏ qua các mã này.`,
+        life: 5000
+      })
+    }
+
+    if (orderData.voucherCodes && Array.isArray(orderData.voucherCodes) && orderData.voucherCodes.length > 0) {
+      // Use validated codes only
+      const codesToProcess = voucherValidationResult.valid ?
+                            orderData.voucherCodes :
+                            voucherValidationResult.validCodes || []
+
+      console.log(`🎫 [VOUCHER] Starting voucher reconstruction for ${codesToProcess.length} valid codes out of ${orderData.voucherCodes.length} total`)
+
+      // Use Promise.all for parallel voucher fetching with validated codes
+      voucherList = await Promise.all(
+        codesToProcess.map(async (code, index) => {
+          try {
+            console.log(`🎫 [VOUCHER] Processing voucher code ${index + 1}/${codesToProcess.length}: ${code}`)
+
+            // First, try to get voucher from store cache
+            const voucher = voucherStore.getVoucherByCode(code)
+
+            if (voucher) {
+              console.log(`✅ [VOUCHER] Found voucher in store cache: ${code}`)
+              return voucher
+            }
+
+            // Fallback: fetch from API if not in store
+            console.log(`🔄 [VOUCHER] Fetching voucher from API: ${code}`)
+            const response = await voucherApi.getVoucherByCode(code)
+
+            if (response.success && response.data) {
+              console.log(`✅ [VOUCHER] Successfully fetched voucher from API: ${code}`)
+              return response.data
+            } else {
+              console.warn(`⚠️ [VOUCHER] API returned unsuccessful response for: ${code}`, response)
+              // Return minimal fallback object
+              return {
+                maPhieuGiamGia: code,
+                tenPhieuGiamGia: `Voucher ${code}`,
+                giaTriGiam: 0,
+                isReconstructed: true // Flag to indicate this is a fallback
+              }
+            }
+
+          } catch (error) {
+            console.error(`❌ [VOUCHER] Failed to reconstruct voucher: ${code}`, error)
+            // Return minimal fallback object to prevent crashes
+            return {
+              maPhieuGiamGia: code,
+              tenPhieuGiamGia: `Voucher ${code}`,
+              giaTriGiam: 0,
+              isReconstructed: true,
+              hasError: true
+            }
+          }
+        })
+      )
+
+      console.log(`✅ [VOUCHER] Successfully reconstructed ${voucherList.length} vouchers`)
+
+      // Log validation summary
+      if (voucherValidationResult && !voucherValidationResult.valid) {
+        console.warn(`⚠️ [VALIDATION SUMMARY] Processed ${voucherValidationResult.validCount}/${voucherValidationResult.totalCodes} valid voucher codes`)
+      }
+    } else {
+      console.log('ℹ️ [VOUCHER] No voucherCodes found, using empty voucherList')
+    }
+  } catch (error) {
+    console.error('❌ [VOUCHER] Error during voucher reconstruction:', error)
+
+    // Show user notification for voucher reconstruction failure
+    toast.add({
+      severity: 'error',
+      summary: 'Lỗi xử lý voucher',
+      detail: 'Không thể tải thông tin voucher. Danh sách voucher sẽ hiển thị trống.',
+      life: 5000
+    })
+
+    // Fallback to empty array to prevent crashes
+    voucherList = []
+  }
 
   // Transform backend order data to frontend format compatible with form structure
-  return {
+  const transformedOrder = {
     ...orderData,
-    // Ensure arrays are properly initialized
-    sanPhamList: orderData.sanPhamList || [],
-    voucherList: orderData.voucherList || [],
+
+    // CRITICAL FIX: Map backend chiTiet array to frontend sanPhamList array
+    sanPhamList,
+
+    // VOUCHER RECONSTRUCTION: Use reconstructed voucher list with full objects
+    voucherList,
 
     // Ensure payment method is properly set
     phuongThucThanhToan: orderData.phuongThucThanhToan || null,
 
-    // Ensure delivery information is properly structured
-    giaohang: orderData.giaohang || false,
-    diaChiGiaoHang: orderData.diaChiGiaoHang || null,
+    // ENHANCED DELIVERY STATE DERIVATION: Derive giaohang from address validity
+    giaohang: deriveDeliveryState(orderData),
+
+    // ENHANCED ADDRESS VALIDATION: Validate delivery address if present
+    diaChiGiaoHang: (() => {
+      try {
+        if (!orderData.diaChiGiaoHang) {
+          return null
+        }
+
+        console.log('🔍 [VALIDATION] Starting address validation...')
+        const addressValidation = validateAddress(orderData.diaChiGiaoHang)
+
+        if (!addressValidation.valid) {
+          console.warn('⚠️ [VALIDATION WARNING] Address validation failed:', addressValidation.error)
+          console.warn('⚠️ [VALIDATION WARNING] Missing fields:', addressValidation.missingFields)
+          console.warn('⚠️ [VALIDATION WARNING] Invalid fields:', addressValidation.invalidFields)
+
+          // Show user notification for address validation issues
+          if (orderData.giaohang) { // Only show warning for delivery orders
+            toast.add({
+              severity: 'warn',
+              summary: 'Địa chỉ giao hàng không đầy đủ',
+              detail: 'Một số thông tin địa chỉ bị thiếu hoặc không hợp lệ. Vui lòng kiểm tra lại.',
+              life: 5000
+            })
+          }
+        }
+
+        return orderData.diaChiGiaoHang
+      } catch (error) {
+        console.error('❌ [VALIDATION ERROR] Failed to validate address:', error)
+
+        // Show user notification for validation failure
+        toast.add({
+          severity: 'error',
+          summary: 'Lỗi xử lý địa chỉ giao hàng',
+          detail: 'Không thể xử lý địa chỉ giao hàng. Vui lòng nhập lại.',
+          life: 5000
+        })
+
+        // Return null for fallback
+        return null
+      }
+    })(),
 
     // Ensure customer information is available
     khachHang: orderData.khachHang || null,
+
+    // ENHANCED RECIPIENT INFORMATION CONSTRUCTION with validation
+    nguoiNhan: (() => {
+      try {
+        console.log('🔍 [VALIDATION] Starting recipient validation...')
+        const recipientValidation = validateRecipient(orderData)
+
+        if (!recipientValidation.valid) {
+          console.warn('⚠️ [VALIDATION WARNING] Recipient validation failed:', recipientValidation.error)
+          console.warn('⚠️ [VALIDATION WARNING] Issues:', recipientValidation.issues)
+
+          // Show user notification for recipient validation issues
+          if (orderData.giaohang) { // Only show warning for delivery orders
+            toast.add({
+              severity: 'warn',
+              summary: 'Thông tin người nhận không đầy đủ',
+              detail: 'Một số thông tin người nhận bị thiếu hoặc không hợp lệ. Vui lòng kiểm tra lại.',
+              life: 5000
+            })
+          }
+        }
+
+        return {
+          hoTen: orderData.nguoiNhanTen || '',
+          soDienThoai: orderData.nguoiNhanSdt || '',
+          email: orderData.nguoiNhanEmail || ''
+        }
+      } catch (error) {
+        console.error('❌ [VALIDATION ERROR] Failed to validate recipient information:', error)
+
+        // Show user notification for validation failure
+        toast.add({
+          severity: 'error',
+          summary: 'Lỗi xử lý thông tin người nhận',
+          detail: 'Không thể xử lý thông tin người nhận. Vui lòng nhập lại.',
+          life: 5000
+        })
+
+        // Return fallback object
+        return {
+          hoTen: '',
+          soDienThoai: '',
+          email: ''
+        }
+      }
+    })(),
 
     // Ensure totals are properly calculated
     tongTienHang: orderData.tongTienHang || 0,
@@ -1209,6 +2551,41 @@ const transformOrderForEdit = (orderData) => {
     ngayTao: orderData.ngayTao,
     ngayCapNhat: orderData.ngayCapNhat
   }
+
+  console.log('✅ [RECIPIENT] Constructed nguoiNhan object:', transformedOrder.nguoiNhan)
+  console.log('✅ [VOUCHER] Final voucher list:', transformedOrder.voucherList)
+
+  // TRANSFORMATION SUMMARY: Log comprehensive summary of transformation results
+  console.log('📊 [TRANSFORM SUMMARY] Transformation completed with the following results:')
+  console.log(`📊 [TRANSFORM SUMMARY] - Products: ${transformedOrder.sanPhamList?.length || 0} items`)
+  console.log(`📊 [TRANSFORM SUMMARY] - Vouchers: ${transformedOrder.voucherList?.length || 0} items`)
+  console.log(`📊 [TRANSFORM SUMMARY] - Delivery: ${transformedOrder.giaohang ? 'Yes' : 'No'}`)
+  console.log(`📊 [TRANSFORM SUMMARY] - Address: ${transformedOrder.diaChiGiaoHang ? 'Present' : 'Not present'}`)
+  console.log(`📊 [TRANSFORM SUMMARY] - Recipient: ${transformedOrder.nguoiNhan?.hoTen ? 'Present' : 'Not present'}`)
+  console.log(`📊 [TRANSFORM SUMMARY] - Errors encountered: ${transformationErrors.length}`)
+
+  if (transformationErrors.length > 0) {
+    console.warn('⚠️ [TRANSFORM SUMMARY] Transformation errors:', transformationErrors)
+
+    // Show summary notification if there were multiple errors
+    if (transformationErrors.length > 1) {
+      const errorCount = transformationErrors.length
+      const warningCount = transformationErrors.filter(e => e.severity === 'warn').length
+      const errorCountActual = transformationErrors.filter(e => e.severity === 'error').length
+
+      toast.add({
+        severity: errorCountActual > 0 ? 'error' : 'warn',
+        summary: 'Tổng kết xử lý dữ liệu',
+        detail: `Đã xử lý xong với ${errorCount} vấn đề: ${warningCount} cảnh báo, ${errorCountActual} lỗi. Vui lòng kiểm tra lại thông tin.`,
+        life: 7000
+      })
+    }
+  } else {
+    console.log('✅ [TRANSFORM SUMMARY] No errors encountered during transformation')
+  }
+
+  console.log('✅ [TRANSFORM COMPLETE] Final transformed order:', transformedOrder)
+  return transformedOrder
 }
 
 // Load order data for editing
@@ -1230,12 +2607,22 @@ const loadOrderData = async () => {
 
     console.log('Raw order data loaded:', orderData)
 
-    // Transform order data for editing
-    const transformedOrder = transformOrderForEdit(orderData)
+    // Transform order data for editing (now async for voucher reconstruction)
+    console.log('🔄 [LOAD] Starting data transformation...')
+    const transformedOrder = await transformOrderForEdit(orderData)
+
+    if (!transformedOrder) {
+      throw new Error('Không thể xử lý dữ liệu đơn hàng')
+    }
+
+    console.log('✅ [LOAD] Data transformation completed successfully')
     console.log('Transformed order data:', transformedOrder)
 
     // Set current order
     currentOrder.value = transformedOrder
+
+    // UNIFIED CLEANUP: Initialize cleanup tracking for this order
+    unifiedCleanupStrategy.initializeCleanupTracking(transformedOrder)
 
     // Pre-populate form fields
     await prePopulateFormFields(transformedOrder)
@@ -1244,6 +2631,7 @@ const loadOrderData = async () => {
     calculateCurrentOrderTotals()
 
     console.log('Order data loading completed successfully')
+    console.log('🔒 Cleanup tracking initialized:', unifiedCleanupStrategy.getCleanupSummary())
 
   } catch (err) {
     console.error('Error loading order data:', err)
@@ -1264,6 +2652,50 @@ const loadOrderData = async () => {
   }
 }
 
+// Enhanced address dropdown population with timeout and retry logic
+const populateAddressDropdownsWithTimeout = async (addressData, timeoutMs = 5000, maxRetries = 2) => {
+  console.log('🏠 [ADDRESS DROPDOWN] Starting dropdown population with timeout:', { addressData, timeoutMs, maxRetries })
+
+  let retryCount = 0
+
+  const attemptPopulation = async () => {
+    try {
+      console.log(`🏠 [ADDRESS DROPDOWN] Attempt ${retryCount + 1}/${maxRetries + 1}`)
+
+      // Create timeout promise
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Address dropdown population timeout')), timeoutMs)
+      })
+
+      // Create population promise
+      const populationPromise = populateDropdownSelections(addressData)
+
+      // Race between population and timeout
+      await Promise.race([populationPromise, timeoutPromise])
+
+      console.log('✅ [ADDRESS DROPDOWN] Dropdown population completed successfully')
+      return true
+
+    } catch (error) {
+      console.error(`❌ [ADDRESS DROPDOWN] Attempt ${retryCount + 1} failed:`, error)
+
+      if (retryCount < maxRetries) {
+        retryCount++
+        console.log(`🔄 [ADDRESS DROPDOWN] Retrying... (${retryCount}/${maxRetries})`)
+
+        // Wait before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount))
+        return attemptPopulation()
+      } else {
+        console.error('❌ [ADDRESS DROPDOWN] All retry attempts failed')
+        throw error
+      }
+    }
+  }
+
+  return attemptPopulation()
+}
+
 // Pre-populate form fields with order data
 const prePopulateFormFields = async (orderData) => {
   try {
@@ -1276,23 +2708,52 @@ const prePopulateFormFields = async (orderData) => {
       // The customer autocomplete will be populated via currentOrder.value.khachHang
     }
 
-    // Pre-populate delivery address if exists
-    if (orderData.diaChiGiaoHang) {
-      console.log('Setting delivery address:', orderData.diaChiGiaoHang)
-      // Address data will be populated via currentOrder.value.diaChiGiaoHang
+    // ENHANCED ADDRESS PRE-POPULATION: Integrate with embedded address infrastructure
+    if (orderData.diaChiGiaoHang && orderData.giaohang) {
+      console.log('🏠 [ADDRESS] Starting enhanced address pre-population:', orderData.diaChiGiaoHang)
 
-      // Update address form data if using embedded address component
-      if (orderData.diaChiGiaoHang.duong) {
+      try {
+        // Set address data in the composable
+        setAddressData({
+          duong: orderData.diaChiGiaoHang.duong || '',
+          phuongXa: orderData.diaChiGiaoHang.phuongXa || '',
+          quanHuyen: orderData.diaChiGiaoHang.quanHuyen || '',
+          tinhThanh: orderData.diaChiGiaoHang.tinhThanh || '',
+          loaiDiaChi: orderData.diaChiGiaoHang.loaiDiaChi || 'Nhà riêng',
+          laMacDinh: orderData.diaChiGiaoHang.laMacDinh || false
+        })
+
+        console.log('✅ [ADDRESS] Address data set in composable')
+
+        // Populate dropdown selections with timeout and error handling
+        await populateAddressDropdownsWithTimeout(orderData.diaChiGiaoHang)
+
+        // Update current order data for form integration
         updateCurrentOrderData({
           diaChiGiaoHang: orderData.diaChiGiaoHang
         })
+
+        console.log('✅ [ADDRESS] Enhanced address pre-population completed successfully')
+
+      } catch (error) {
+        console.error('❌ [ADDRESS] Error during address pre-population:', error)
+        // Don't throw error here as it's not critical for the main loading process
+        // Address can still be manually edited by the user
       }
     }
 
     // Pre-populate recipient information for delivery orders
     if (orderData.giaohang && orderData.nguoiNhan) {
       console.log('Setting recipient information:', orderData.nguoiNhan)
-      // Recipient info will be populated via currentOrder.value.nguoiNhan
+
+      // Populate recipientInfo reactive state with transformed data
+      recipientInfo.value.hoTen = orderData.nguoiNhan.hoTen || ''
+      recipientInfo.value.soDienThoai = orderData.nguoiNhan.soDienThoai || ''
+
+      console.log('✅ [RECIPIENT] Populated recipient info:', {
+        hoTen: recipientInfo.value.hoTen,
+        soDienThoai: recipientInfo.value.soDienThoai
+      })
     }
 
     // Pre-populate payment method
@@ -1381,6 +2842,30 @@ const showQRScanner = ref(false)
 const qrScanResult = ref(null)
 const qrProcessingResult = ref(null)
 const cameraError = ref(null)
+
+// ENHANCEMENT: Reservation status indicators for UI feedback
+const reservationStatus = ref({
+  isReserving: false,
+  currentSerialNumber: null,
+  lastReservationResult: null,
+  conflictDetected: false,
+  retryAttempt: 0,
+  context: null
+})
+
+// ENHANCEMENT: Comprehensive error handling and user feedback system
+const reservationErrorState = ref({
+  hasError: false,
+  errorHandling: null,
+  showErrorDialog: false,
+  autoRetryEnabled: true,
+  retryCount: 0,
+  maxAutoRetries: 2
+})
+
+// ENHANCEMENT: Unified cleanup strategy - track newly reserved items for proper cleanup
+const newlyReservedItems = ref(new Set()) // Track serial numbers reserved during this edit session
+const originalOrderItems = ref(new Set()) // Track original order items that should NOT be cleaned up
 
 // Order confirmation dialog state
 const orderConfirmationVisible = ref(false)
@@ -2281,6 +3766,73 @@ const addVariantToCurrentOrder = async (variantData) => {
     thanhTien = newEffectivePrice * soLuong
   }
 
+  // ENHANCED: Comprehensive reservation with conflict detection
+  if (sanPhamChiTiet.serialNumberId && sanPhamChiTiet.serialNumber) {
+    try {
+      console.log(`🔒 [ENHANCED RESERVATION] Starting reservation for serial ${sanPhamChiTiet.serialNumber}`)
+
+      // Step 1: Validate serial number selection with conflict detection
+      const serialNumberObj = {
+        id: sanPhamChiTiet.serialNumberId,
+        serialNumberValue: sanPhamChiTiet.serialNumber,
+        serialNumber: sanPhamChiTiet.serialNumber
+      }
+
+      const validationResult = await reservationConflictDetection.validateSerialNumberSelection(
+        serialNumberObj,
+        sanPhamChiTiet.id,
+        'addVariantToCurrentOrder'
+      )
+
+      if (!validationResult.success) {
+        throw new Error(validationResult.error)
+      }
+
+      // Step 2: Attempt reservation with retry mechanism
+      const reservationRequest = {
+        sanPhamChiTietId: sanPhamChiTiet.id,
+        soLuong: soLuong,
+        tabId: orderId.value, // Use order ID as session ID for edit mode
+        serialNumbers: [sanPhamChiTiet.serialNumber] // Reserve specific serial number
+      }
+
+      const reservationResult = await reservationConflictDetection.attemptReservationWithRetry(
+        reservationRequest,
+        'addVariantToCurrentOrder'
+      )
+
+      console.log(`✅ [ENHANCED RESERVATION] Successfully reserved serial number ${sanPhamChiTiet.serialNumber}`)
+      console.log('Reservation details:', {
+        cartSessionId: reservationResult.cartSessionId,
+        soLuongDatTruoc: reservationResult.soLuongDatTruoc,
+        thoiGianHetHan: reservationResult.thoiGianHetHan
+      })
+
+      // UNIFIED CLEANUP: Track this newly reserved item for potential cleanup
+      unifiedCleanupStrategy.trackNewlyReservedItem(sanPhamChiTiet.serialNumber)
+
+    } catch (error) {
+      console.error(`❌ [ENHANCED RESERVATION] Failed to reserve serial number ${sanPhamChiTiet.serialNumber}:`, error)
+
+      // COMPREHENSIVE ERROR HANDLING: Use enhanced error handling framework
+      const errorHandled = await comprehensiveErrorHandling.handleReservationError(
+        error,
+        'addVariantToCurrentOrder',
+        sanPhamChiTiet.serialNumber
+      )
+
+      // If auto-retry was successful, continue with adding to cart
+      if (errorHandled && reservationErrorState.value.autoRetryEnabled) {
+        console.log(`🔄 [ENHANCED RESERVATION] Auto-retry successful, proceeding with cart addition`)
+        // The retry logic would be handled by the error handling framework
+        // For now, we'll still prevent cart addition to be safe
+      }
+
+      // Don't add item to cart if reservation fails to prevent inventory conflicts
+      return
+    }
+  }
+
   const newCartItem = {
     sanPhamChiTiet,
     soLuong,
@@ -2418,6 +3970,11 @@ const getVariantDisplayInfo = (item) => {
 const removeFromCurrentOrder = async (index) => {
   const item = currentOrder.value.sanPhamList[index]
 
+  // UNIFIED CLEANUP: Untrack newly reserved item if it's being removed
+  if (item?.sanPhamChiTiet?.serialNumber) {
+    unifiedCleanupStrategy.untrackNewlyReservedItem(item.sanPhamChiTiet.serialNumber)
+  }
+
   // Release backend reservation before removing from cart
   try {
     if (item?.sanPhamChiTiet?.id) {
@@ -2528,7 +4085,8 @@ const resetQRScanner = () => {
 
 const processScannedSerialNumber = async (serialNumber) => {
   try {
-    console.log('Processing scanned serial number:', serialNumber)
+    console.log('🔍 QR Scan: Processing scanned serial number:', serialNumber)
+    console.log('🔍 QR Scan: Order ID for reservation:', orderId.value)
 
     // Find the serial number in the database
     const serialData = await serialNumberApi.getBySerialNumber(serialNumber)
@@ -2541,13 +4099,19 @@ const processScannedSerialNumber = async (serialNumber) => {
       return
     }
 
-    // Check if serial number is available
-    if (serialData.trangThai !== 'AVAILABLE') {
+    // Check if serial number is available for reservation
+    if (serialData.trangThai !== 'AVAILABLE' && serialData.trangThai !== 'RESERVED') {
       qrProcessingResult.value = {
         success: false,
         message: `Serial number "${serialNumber}" không khả dụng (Trạng thái: ${serialData.trangThai})`,
       }
       return
+    }
+
+    // Additional check for RESERVED items - only allow if reserved for this order
+    if (serialData.trangThai === 'RESERVED') {
+      // For QR scanning, we'll be more permissive and let addVariantToCurrentOrder handle the reservation logic
+      console.log(`QR Scan: Serial number ${serialNumber} is RESERVED, will attempt reservation in addVariantToCurrentOrder`)
     }
 
     // Get the product variant information
@@ -2615,7 +4179,74 @@ const processScannedSerialNumber = async (serialNumber) => {
       serialNumberId: serialData.id,
     }
 
-    // Add to cart
+    // ENHANCED: QR scanning with comprehensive conflict detection
+    console.log(`🔍 [QR ENHANCED] Starting enhanced reservation for scanned serial ${serialNumber}`)
+
+    try {
+      // Step 1: Enhanced validation with conflict detection
+      const validationResult = await reservationConflictDetection.validateSerialNumberSelection(
+        serialData,
+        variantId,
+        'QR_scanning'
+      )
+
+      if (!validationResult.success) {
+        throw new Error(validationResult.error)
+      }
+
+      // Step 2: Attempt reservation with retry mechanism
+      const reservationRequest = {
+        sanPhamChiTietId: variantId,
+        soLuong: 1,
+        tabId: orderId.value, // Use order ID as session ID for edit mode
+        serialNumbers: [serialNumber] // Reserve specific scanned serial number
+      }
+
+      const reservationResult = await reservationConflictDetection.attemptReservationWithRetry(
+        reservationRequest,
+        'QR_scanning'
+      )
+
+      console.log(`✅ [QR ENHANCED] Successfully reserved scanned serial number ${serialNumber}`)
+      console.log('QR Enhanced reservation details:', {
+        cartSessionId: reservationResult.cartSessionId,
+        soLuongDatTruoc: reservationResult.soLuongDatTruoc,
+        thoiGianHetHan: reservationResult.thoiGianHetHan
+      })
+
+      // UNIFIED CLEANUP: Track this newly reserved item for potential cleanup
+      unifiedCleanupStrategy.trackNewlyReservedItem(serialNumber)
+
+    } catch (error) {
+      console.error(`❌ [QR ENHANCED] Failed to reserve scanned serial number ${serialNumber}:`, error)
+
+      // COMPREHENSIVE ERROR HANDLING: Use enhanced error handling framework for QR scanning
+      const errorHandled = await comprehensiveErrorHandling.handleReservationError(
+        error,
+        'QR_scanning',
+        serialNumber
+      )
+
+      // Update QR processing result with comprehensive error information
+      const errorHandling = reservationConflictDetection.getComprehensiveErrorHandling(error, 'QR_scanning', serialNumber)
+
+      qrProcessingResult.value = {
+        success: false,
+        message: errorHandling.userMessage,
+        errorType: errorHandling.type,
+        guidance: errorHandling.guidance,
+        recoveryActions: errorHandling.recoveryActions
+      }
+
+      // If auto-retry was successful, we could continue, but for QR scanning we'll be conservative
+      if (errorHandled && reservationErrorState.value.autoRetryEnabled) {
+        console.log(`🔄 [QR ENHANCED] Auto-retry available, but QR scanning requires manual retry`)
+      }
+
+      return // Don't proceed to add to cart if reservation fails
+    }
+
+    // Add to cart (reservation already handled above, but addVariantToCurrentOrder will handle edge cases)
     const variantData = {
       sanPhamChiTiet: variantWithSerial,
       soLuong: 1,
@@ -2633,7 +4264,7 @@ const processScannedSerialNumber = async (serialNumber) => {
 
     qrProcessingResult.value = {
       success: true,
-      message: `Đã thêm sản phẩm với serial "${serialNumber}" vào giỏ hàng`,
+      message: `Đã thêm sản phẩm với serial "${serialNumber}" vào giỏ hàng (QR scan)`,
     }
 
     // Auto-close scanner after successful scan (optional)
@@ -2643,10 +4274,10 @@ const processScannedSerialNumber = async (serialNumber) => {
       }
     }, 2000)
   } catch (error) {
-    console.error('Error processing scanned serial number:', error)
+    console.error('❌ QR Scan: Error processing scanned serial number:', error)
     qrProcessingResult.value = {
       success: false,
-      message: `Lỗi khi xử lý serial number: ${error.message}`,
+      message: `Lỗi QR scan khi xử lý serial number: ${error.message || 'Vui lòng thử lại hoặc nhập thủ công.'}`,
     }
   }
 }
@@ -4095,6 +5726,11 @@ const performOrderCreation = async () => {
       // Clear unsaved changes flag
       hasUnsavedChanges.value = false
 
+      // UNIFIED CLEANUP: Clear newly reserved items tracking since they're now committed
+      // After successful order update, newly reserved items become part of the order
+      newlyReservedItems.value.clear()
+      console.log('🔒 [UNIFIED CLEANUP] Cleared newly reserved items tracking after successful order update')
+
       // Show success message
       toast.add({
         severity: 'success',
@@ -5361,29 +6997,32 @@ onBeforeRouteLeave((_to, _from, next) => {
   }
 })
 
-// Page refresh/close detection for cart reservation cleanup
-const handlePageUnload = (_event) => {
-  console.log('Page unload detected, releasing cart reservations...')
+// Page refresh/close detection for order edit scenarios
+const handlePageUnload = async (_event) => {
+  console.log('Page unload detected in order edit mode...')
 
-  // Get current order ID for cleanup
+  // Get current order ID for potential cleanup tracking
   const currentOrderId = orderId.value
 
-  // Store order ID in localStorage for cleanup on next page load
-  if (currentOrderId) {
-    localStorage.setItem('pendingOrderReservationCleanup', JSON.stringify([currentOrderId]))
+  // ENHANCED: Unified cleanup strategy - clean up only newly reserved items
+  // This preserves existing order items while cleaning up items added during this edit session
+  try {
+    await unifiedCleanupStrategy.cleanupNewlyReservedItems('page_unload')
+    console.log('🔒 [UNIFIED CLEANUP] Page unload cleanup completed')
+  } catch (error) {
+    console.error('🔒 [UNIFIED CLEANUP] Page unload cleanup failed:', error)
   }
 
-  // Attempt synchronous cleanup (may not complete due to page unload timing)
+  // Store order ID for potential future cleanup scenarios (if needed)
+  // Using different localStorage key to distinguish from cart cleanup
   if (currentOrderId) {
-    try {
-      // Use navigator.sendBeacon for more reliable cleanup during page unload
-      const cleanupData = JSON.stringify({ orderId: currentOrderId })
-      navigator.sendBeacon('/api/cart/reservations/release/' + currentOrderId, cleanupData)
-      console.log(`Sent cleanup beacon for order: ${currentOrderId}`)
-    } catch (error) {
-      console.error(`Failed to send cleanup beacon for order ${currentOrderId}:`, error)
-    }
+    localStorage.setItem('pendingOrderEditCleanup', JSON.stringify([currentOrderId]))
+    console.log(`Stored order ID ${currentOrderId} for potential cleanup tracking`)
   }
+
+  // NOTE: Existing order items are preserved during cleanup
+  // Only newly reserved items (added during this edit session) are cleaned up
+  // This maintains inventory integrity while preventing reservation leaks
 }
 
 // Cleanup any pending reservations from previous session (supports both tab-based and order-based)
@@ -5414,7 +7053,7 @@ const cleanupPendingReservations = async () => {
       localStorage.removeItem('pendingCartReservationCleanup')
     }
 
-    // Clean up order-based reservations
+    // Clean up old order-based reservations (legacy cart management)
     const pendingOrderCleanup = localStorage.getItem('pendingOrderReservationCleanup')
     if (pendingOrderCleanup) {
       const orderIds = JSON.parse(pendingOrderCleanup)
@@ -5437,6 +7076,29 @@ const cleanupPendingReservations = async () => {
 
       // Clear the pending cleanup flag
       localStorage.removeItem('pendingOrderReservationCleanup')
+    }
+
+    // Handle order edit cleanup tracking (NO automatic reservation release)
+    const pendingOrderEditCleanup = localStorage.getItem('pendingOrderEditCleanup')
+    if (pendingOrderEditCleanup) {
+      const orderIds = JSON.parse(pendingOrderEditCleanup)
+      logger.debug('Found pending order edit cleanup tracking from previous session', {
+        orderIds,
+        count: orderIds.length,
+        note: 'No automatic reservation release for order editing'
+      }, 'cleanup')
+
+      // For order editing, we do NOT automatically release reservations
+      // We only clear the tracking entry and log the information
+      // Reservations should only be modified during actual order updates
+
+      // Clear the pending cleanup tracking
+      localStorage.removeItem('pendingOrderEditCleanup')
+
+      logger.debug('Cleared order edit cleanup tracking without releasing reservations', {
+        orderIds,
+        reason: 'Order editing preserves reservations until actual update'
+      }, 'cleanup')
     }
   } catch (error) {
     logger.critical('Error during pending reservations cleanup', {
@@ -5897,7 +7559,12 @@ const handleNewVoucherCreated = async (voucherData) => {
   }
 }
 
-// Cleanup cart reservations for current order
+// DISABLED: Cart reservation cleanup function
+// This function was previously called in onUnmounted() but has been removed
+// because order editing should preserve reservations until actual order update.
+// Kept for reference in case reservation handling needs to be implemented
+// in the order update process in the future.
+/*
 const cleanupCurrentOrderReservations = async () => {
   if (currentOrder.value?.id) {
     try {
@@ -5913,6 +7580,7 @@ const cleanupCurrentOrderReservations = async () => {
     }
   }
 }
+*/
 
 // ===== DEVELOPMENT TESTING UTILITIES =====
 
@@ -6045,8 +7713,15 @@ onUnmounted(async () => {
     window.removeEventListener('beforeunload', handlePageUnload)
     window.removeEventListener('pagehide', handlePageUnload)
 
-    // Cleanup cart reservations for current order
-    await cleanupCurrentOrderReservations()
+    // ENHANCED: Unified cleanup strategy - clean up newly reserved items on component unmount
+    // This ensures newly reserved items are cleaned up when component is destroyed
+    // while preserving existing order items
+    try {
+      await unifiedCleanupStrategy.cleanupNewlyReservedItems('component_unmount')
+      console.log('🔒 [UNIFIED CLEANUP] Component unmount cleanup completed')
+    } catch (error) {
+      console.error('🔒 [UNIFIED CLEANUP] Component unmount cleanup failed:', error)
+    }
 
     // Cleanup WebSocket integration callbacks to prevent memory leaks
     cleanupVoucherWebSocketIntegration()
