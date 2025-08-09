@@ -57,6 +57,112 @@
       </div>
     </div>
 
+    <!-- Order Timeline Section - Full Width -->
+    <div v-if="isEditMode && currentOrder && !loading && !error" class="card mb-6">
+      <div class="flex items-center justify-between mb-6">
+        <div class="flex items-center gap-3">
+          <i class="pi pi-clock text-2xl text-primary"></i>
+          <div>
+            <h3 class="text-lg font-semibold text-surface-900">Tiến trình đơn hàng</h3>
+            <p class="text-sm text-surface-600">Theo dõi trạng thái và tiến độ xử lý đơn hàng</p>
+          </div>
+        </div>
+        <Button
+          :icon="showTimeline ? 'pi pi-eye-slash' : 'pi pi-eye'"
+          :label="showTimeline ? 'Ẩn timeline' : 'Hiện timeline'"
+          outlined
+          size="small"
+          @click="toggleTimeline"
+        />
+      </div>
+
+      <!-- Timeline Content -->
+      <div v-if="showTimeline" class="space-y-6">
+        <!-- Simplified Card-Only Timeline -->
+        <div class="timeline-cards-container">
+          <div class="flex flex-wrap gap-4 justify-center">
+            <div
+              v-for="(item, index) in orderTimeline"
+              :key="index"
+              class="timeline-card-integrated"
+              :class="{
+                'timeline-card-completed': item.isCompleted && !item.isCurrent,
+                'timeline-card-current': item.isCurrent,
+                'timeline-card-future': item.isFuture
+              }"
+            >
+              <!-- Status Icon with Integrated Indicator -->
+              <div class="timeline-icon-container">
+                <div class="timeline-icon-wrapper">
+                  <i
+                    :class="item.icon"
+                    class="timeline-icon"
+                  ></i>
+                  <!-- Status Indicator Overlay -->
+                  <div
+                    v-if="item.isCompleted && !item.isCurrent"
+                    class="timeline-status-badge timeline-status-completed"
+                  >
+                    <i class="pi pi-check text-xs"></i>
+                  </div>
+                  <div
+                    v-else-if="item.isCurrent"
+                    class="timeline-status-badge timeline-status-current"
+                  >
+                    <div class="timeline-pulse"></div>
+                  </div>
+                  <div
+                    v-else-if="item.isFuture"
+                    class="timeline-status-badge timeline-status-future"
+                  >
+                    <i class="pi pi-circle text-xs"></i>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Card Content -->
+              <div class="timeline-card-content">
+                <div class="timeline-card-title">{{ item.status }}</div>
+                <div v-if="item.date" class="timeline-card-date">
+                  {{ new Date(item.date).toLocaleDateString('vi-VN', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  }) }}
+                </div>
+                <div v-if="item.description" class="timeline-card-description">
+                  {{ item.description }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status Update Actions -->
+        <div v-if="availableStatusUpdates.length > 0" class="mt-6">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h4 class="font-semibold text-base text-surface-900">Hành động có thể thực hiện</h4>
+              <p class="text-sm text-surface-600">Cập nhật trạng thái đơn hàng</p>
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-3">
+            <Button
+              v-for="update in availableStatusUpdates"
+              :key="update.value"
+              :label="update.label"
+              :icon="update.icon"
+              :severity="update.severity"
+              @click="updateOrderStatus(update.value, update.label)"
+              class="flex-shrink-0"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Loading State -->
     <div v-if="loading" class="text-center py-12">
       <ProgressSpinner style="width: 50px; height: 50px" strokeWidth="4" />
@@ -118,8 +224,24 @@
                   <i class="pi pi-barcode text-primary text-lg"></i>
                   <div class="flex flex-col">
                     <span class="text-xs text-surface-500 uppercase tracking-wide font-medium">Serial</span>
-                    <span class="text-sm font-bold font-mono text-primary">
-                      {{ item.sanPhamChiTiet?.serialNumber || 'N/A' }}
+                    <span class="text-sm font-bold font-mono">
+                      <!-- Loading state: Show spinner when data is being loaded -->
+                      <template v-if="loading && !item.sanPhamChiTiet?.serialNumber && !item.serialNumber">
+                        <i class="pi pi-spin pi-spinner text-xs mr-1 text-surface-400"></i>
+                        <span class="text-surface-400">Đang tải...</span>
+                      </template>
+                      <!-- Primary serial number source: sanPhamChiTiet.serialNumber -->
+                      <template v-else-if="item.sanPhamChiTiet?.serialNumber && item.sanPhamChiTiet.serialNumber.trim() !== ''">
+                        <span class="text-primary">{{ item.sanPhamChiTiet.serialNumber }}</span>
+                      </template>
+                      <!-- Fallback serial number source: item.serialNumber -->
+                      <template v-else-if="item.serialNumber && item.serialNumber.trim() !== ''">
+                        <span class="text-primary">{{ item.serialNumber }}</span>
+                      </template>
+                      <!-- No serial number available -->
+                      <template v-else>
+                        <span class="text-surface-400 text-xs italic">Chưa có serial</span>
+                      </template>
                     </span>
                   </div>
                 </div>
@@ -842,6 +964,8 @@
             </div>
           </div>
         </div>
+
+
       </div>
     </div>
 
@@ -1141,6 +1265,8 @@ import { useRealTimePricing } from '@/composables/useRealTimePricing'
 import { useVoucherMonitoring } from '@/composables/useVoucherMonitoring'
 import { useShippingCalculator } from '@/composables/useShippingCalculator'
 import { useOrderExpiration } from '@/composables/useOrderExpiration'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import { usePerformanceOptimization } from '@/composables/usePerformanceOptimization'
 import WebSocketLogger, { WebSocketLoggerUtils } from '@/utils/WebSocketLogger.js'
 import { getPaymentReturnUrl } from '@/utils/returnUrlConfig.js'
 import { mapOrderToUpdateDto } from '@/utils/orderMapping.js'
@@ -1184,6 +1310,13 @@ const confirm = useConfirm()
 
 // Cart reservations with enhanced conflict detection
 const { reserveForCart, releaseCartReservations, releaseSpecificItems } = useCartReservations()
+
+// Timeline and status management
+const { auditHistory, auditLoading, loadAuditHistory } = useOrderAudit()
+const confirmDialog = useConfirmDialog()
+
+// Performance optimization utilities
+const { batchOperations, processInChunks, deduplicateRequest } = usePerformanceOptimization()
 
 // ENHANCEMENT: Comprehensive reservation conflict detection and prevention
 const reservationConflictDetection = {
@@ -2021,6 +2154,38 @@ const currentOrder = ref(null)
 const loading = ref(false)
 const error = ref(null)
 
+// Enhanced loading state tracking for lifecycle phases
+const initializationPhases = ref({
+  parallelOperations: false,
+  orderDataLoading: false,
+  realTimeFeatures: false,
+  completed: false
+})
+
+// Helper function to update initialization phase
+const updateInitializationPhase = (phase, isLoading) => {
+  initializationPhases.value[phase] = isLoading
+  console.log(`🔄 [LIFECYCLE] Phase "${phase}" ${isLoading ? 'started' : 'completed'}`)
+}
+
+// Computed property for overall initialization status
+const isInitializing = computed(() => {
+  return Object.values(initializationPhases.value).some(phase => phase === true) && !initializationPhases.value.completed
+})
+
+// Serial number loading state tracking
+const serialNumberLoadingStates = ref(new Map())
+
+// Helper function to check if serial numbers are being loaded
+const isSerialNumberLoading = (itemId) => {
+  return serialNumberLoadingStates.value.get(itemId) || false
+}
+
+// Helper function to set serial number loading state
+const setSerialNumberLoading = (itemId, isLoading) => {
+  serialNumberLoadingStates.value.set(itemId, isLoading)
+}
+
 // Destructure store actions for order management
 const {
   fetchOrderById,
@@ -2227,6 +2392,240 @@ const deriveDeliveryState = (orderData) => {
   }
 }
 
+// Helper function for comprehensive serial number resolution
+const resolveSerialNumber = (item, index = null) => {
+  // Define all possible serial number property names in order of preference
+  const serialNumberProperties = [
+    'serialNumber',
+    'serialNumberValue',
+    'soSeri',
+    'serialNumberSnapshot',
+    'serialNo',
+    'sn',
+    'serialNum',
+    'serial'
+  ]
+
+  // Try each property in order
+  for (const prop of serialNumberProperties) {
+    if (item[prop] && typeof item[prop] === 'string' && item[prop].trim() !== '') {
+      console.log(`🔍 [SERIAL RESOLVE] Found serial number in property "${prop}": "${item[prop]}"${index !== null ? ` for item ${index}` : ''}`)
+      return item[prop].trim()
+    }
+  }
+
+  // If no direct property found, try nested objects
+  if (item.sanPhamChiTiet) {
+    for (const prop of serialNumberProperties) {
+      if (item.sanPhamChiTiet[prop] && typeof item.sanPhamChiTiet[prop] === 'string' && item.sanPhamChiTiet[prop].trim() !== '') {
+        console.log(`🔍 [SERIAL RESOLVE] Found serial number in nested property "sanPhamChiTiet.${prop}": "${item.sanPhamChiTiet[prop]}"${index !== null ? ` for item ${index}` : ''}`)
+        return item.sanPhamChiTiet[prop].trim()
+      }
+    }
+  }
+
+  // Log all available properties for debugging
+  const availableProps = Object.keys(item).filter(key =>
+    key.toLowerCase().includes('serial') ||
+    key.toLowerCase().includes('seri') ||
+    key.toLowerCase().includes('sn')
+  )
+
+  if (availableProps.length > 0) {
+    console.warn(`⚠️ [SERIAL RESOLVE] No valid serial number found${index !== null ? ` for item ${index}` : ''}, but found related properties:`, availableProps.map(prop => `${prop}: ${item[prop]}`))
+  } else {
+    console.warn(`⚠️ [SERIAL RESOLVE] No serial number properties found${index !== null ? ` for item ${index}` : ''}`)
+  }
+
+  return null
+}
+
+// Helper functions for parallel data transformation
+const validateAndTransformChiTiet = async (chiTietData) => {
+  console.log('🔍 [PARALLEL] Starting chiTiet validation and transformation...')
+
+  let sanPhamList = []
+  let chiTietValidationResult = null
+  const errors = []
+
+  try {
+    chiTietValidationResult = validateChiTiet(chiTietData || [])
+
+    if (!chiTietValidationResult.valid) {
+      console.error('❌ [PARALLEL] chiTiet validation failed:', chiTietValidationResult.error)
+      errors.push({
+        type: 'chiTiet_validation',
+        message: `${chiTietValidationResult.invalidItems?.length || 0} sản phẩm có dữ liệu không hợp lệ`,
+        severity: 'warn'
+      })
+    }
+
+    if (chiTietData && Array.isArray(chiTietData) && chiTietData.length > 0) {
+      const itemsToProcess = chiTietValidationResult.valid ?
+                            chiTietData :
+                            chiTietValidationResult.validItems || []
+
+      console.log(`🔄 [PARALLEL] Processing ${itemsToProcess.length} valid chiTiet items`)
+
+      // Use processInChunks for large datasets
+      if (itemsToProcess.length > 50) {
+        console.log(`🔄 [PARALLEL] Using chunk processing for ${itemsToProcess.length} items`)
+        sanPhamList = await processInChunks(itemsToProcess, (chunk) => {
+          return chunk.map((item, index) => {
+            // ENHANCED: Use comprehensive serial number resolution
+            const resolvedSerialNumber = resolveSerialNumber(item, index)
+
+            return {
+              id: item.id,
+              sanPhamChiTiet: {
+                id: item.sanPhamChiTietId,
+                serialNumberId: item.serialNumberId,
+                serialNumber: resolvedSerialNumber,
+                giaBan: item.giaBan,
+                sku: item.skuSnapshot,
+                tenSanPham: item.tenSanPhamSnapshot,
+                hinhAnh: item.hinhAnhSnapshot ? [item.hinhAnhSnapshot] : []
+              },
+              soLuong: item.soLuong || 1,
+              donGia: item.giaBan || item.donGia || 0,
+              thanhTien: item.thanhTien || (item.giaBan * item.soLuong) || 0,
+              serialNumber: resolvedSerialNumber
+            }
+          })
+        }, 25)
+        sanPhamList = sanPhamList.flat()
+      } else {
+        sanPhamList = itemsToProcess.map((item, index) => {
+          // ENHANCED: Use comprehensive serial number resolution
+          const resolvedSerialNumber = resolveSerialNumber(item, index)
+
+          return {
+            id: item.id,
+            sanPhamChiTiet: {
+              id: item.sanPhamChiTietId,
+              serialNumberId: item.serialNumberId,
+              serialNumber: resolvedSerialNumber,
+              giaBan: item.giaBan,
+              sku: item.skuSnapshot,
+              tenSanPham: item.tenSanPhamSnapshot,
+              hinhAnh: item.hinhAnhSnapshot ? [item.hinhAnhSnapshot] : []
+            },
+            soLuong: item.soLuong || 1,
+            donGia: item.giaBan || item.donGia || 0,
+            thanhTien: item.thanhTien || (item.giaBan * item.soLuong) || 0,
+            serialNumber: resolvedSerialNumber
+          }
+        })
+      }
+
+      // SERIAL NUMBER SUMMARY: Log resolution statistics
+      const serialNumberStats = {
+        total: sanPhamList.length,
+        withSerial: sanPhamList.filter(item => item.serialNumber && item.serialNumber.trim() !== '').length,
+        withoutSerial: sanPhamList.filter(item => !item.serialNumber || item.serialNumber.trim() === '').length
+      }
+
+      console.log(`📊 [SERIAL SUMMARY] Serial number resolution statistics:`, serialNumberStats)
+      console.log(`📊 [SERIAL SUMMARY] Success rate: ${serialNumberStats.total > 0 ? Math.round((serialNumberStats.withSerial / serialNumberStats.total) * 100) : 0}%`)
+
+      if (serialNumberStats.withoutSerial > 0) {
+        console.warn(`⚠️ [SERIAL SUMMARY] ${serialNumberStats.withoutSerial} items missing serial numbers`)
+      }
+
+      console.log(`✅ [PARALLEL] Successfully transformed ${sanPhamList.length} chiTiet items`)
+    }
+  } catch (error) {
+    console.error('❌ [PARALLEL] Failed to transform chiTiet:', error)
+    errors.push({
+      type: 'chiTiet_transform',
+      message: 'Không thể xử lý danh sách sản phẩm',
+      severity: 'error'
+    })
+    sanPhamList = []
+  }
+
+  return { sanPhamList, errors, validationResult: chiTietValidationResult }
+}
+
+const validateAddressData = async (addressData) => {
+  console.log('🔍 [PARALLEL] Starting address validation...')
+
+  const errors = []
+  let validatedAddress = null
+
+  try {
+    if (!addressData) {
+      return { validatedAddress: null, errors }
+    }
+
+    const addressValidation = validateAddress(addressData)
+
+    if (!addressValidation.valid) {
+      console.warn('⚠️ [PARALLEL] Address validation failed:', addressValidation.error)
+      errors.push({
+        type: 'address_validation',
+        message: 'Địa chỉ giao hàng không đầy đủ',
+        severity: 'warn'
+      })
+    }
+
+    validatedAddress = addressData
+    console.log('✅ [PARALLEL] Address validation completed')
+  } catch (error) {
+    console.error('❌ [PARALLEL] Failed to validate address:', error)
+    errors.push({
+      type: 'address_validation',
+      message: 'Không thể xử lý địa chỉ giao hàng',
+      severity: 'error'
+    })
+    validatedAddress = null
+  }
+
+  return { validatedAddress, errors }
+}
+
+const validateRecipientInfo = async (orderData) => {
+  console.log('🔍 [PARALLEL] Starting recipient validation...')
+
+  const errors = []
+  let recipientInfo = null
+
+  try {
+    const recipientValidation = validateRecipient(orderData)
+
+    if (!recipientValidation.valid) {
+      console.warn('⚠️ [PARALLEL] Recipient validation failed:', recipientValidation.error)
+      errors.push({
+        type: 'recipient_validation',
+        message: 'Thông tin người nhận không đầy đủ',
+        severity: 'warn'
+      })
+    }
+
+    recipientInfo = {
+      hoTen: orderData.nguoiNhanTen || '',
+      soDienThoai: orderData.nguoiNhanSdt || '',
+      email: orderData.nguoiNhanEmail || ''
+    }
+
+    console.log('✅ [PARALLEL] Recipient validation completed')
+  } catch (error) {
+    console.error('❌ [PARALLEL] Failed to validate recipient:', error)
+    errors.push({
+      type: 'recipient_validation',
+      message: 'Không thể xử lý thông tin người nhận',
+      severity: 'error'
+    })
+    recipientInfo = {
+      hoTen: '',
+      soDienThoai: '',
+      email: ''
+    }
+  }
+
+  return { recipientInfo, errors }
+}
+
 // Enhanced data transformation utility for order editing with comprehensive error handling
 const transformOrderForEdit = async (orderData) => {
   // Input validation
@@ -2261,107 +2660,122 @@ const transformOrderForEdit = async (orderData) => {
     nguoiNhanEmail: orderData.nguoiNhanEmail
   })
 
+  // PROGRESSIVE LOADING: Provide basic order information immediately
+  const basicOrderInfo = {
+    ...orderData,
+    sanPhamList: [], // Will be populated by parallel processing
+    voucherList: [], // Will be populated by parallel processing
+    diaChiGiaoHang: orderData.diaChiGiaoHang || null,
+    nguoiNhan: {
+      hoTen: orderData.nguoiNhanTen || '',
+      soDienThoai: orderData.nguoiNhanSdt || '',
+      email: orderData.nguoiNhanEmail || ''
+    },
+    phuongThucThanhToan: orderData.phuongThucThanhToan || null,
+    giaohang: deriveDeliveryState(orderData),
+    khachHang: orderData.khachHang || null,
+    tongTienHang: orderData.tongTienHang || 0,
+    giaTriGiamGiaVoucher: orderData.giaTriGiamGiaVoucher || 0,
+    phiVanChuyen: orderData.phiVanChuyen || 0,
+    tongThanhToan: orderData.tongThanhToan || 0,
+    maHoaDon: orderData.maHoaDon,
+    trangThaiDonHang: orderData.trangThaiDonHang,
+    loaiHoaDon: orderData.loaiHoaDon,
+    ngayTao: orderData.ngayTao,
+    ngayCapNhat: orderData.ngayCapNhat,
+    _isBasicInfo: true // Flag to indicate this is basic info
+  }
+
+  console.log('⚡ [PROGRESSIVE] Basic order information available immediately:', basicOrderInfo)
+
   // Track transformation errors for summary
   const transformationErrors = []
 
-  // ENHANCED CHITIET TRANSFORMATION with comprehensive validation
+  console.log('🚀 [PARALLEL] Starting parallel data transformation operations...')
+
+  // OPTIMIZATION: Execute independent operations in parallel using Promise.allSettled
+  const [chiTietResults, addressResults, recipientResults] = await Promise.allSettled([
+    validateAndTransformChiTiet(orderData.chiTiet),
+    validateAddressData(orderData.diaChiGiaoHang),
+    validateRecipientInfo(orderData)
+  ])
+
+  console.log('✅ [PARALLEL] All parallel operations completed')
+
+  // Process chiTiet results
   let sanPhamList = []
   let chiTietValidationResult = null
+  if (chiTietResults.status === 'fulfilled') {
+    sanPhamList = chiTietResults.value.sanPhamList
+    chiTietValidationResult = chiTietResults.value.validationResult
+    transformationErrors.push(...chiTietResults.value.errors)
+    console.log(`✅ [PARALLEL] ChiTiet processing completed: ${sanPhamList.length} items`)
+  } else {
+    console.error('❌ [PARALLEL] ChiTiet processing failed:', chiTietResults.reason)
+    transformationErrors.push({
+      type: 'chiTiet_parallel',
+      message: 'Lỗi xử lý song song dữ liệu sản phẩm',
+      severity: 'error'
+    })
+    sanPhamList = []
+  }
 
-  try {
-    console.log('🔍 [VALIDATION] Starting chiTiet validation...')
-    chiTietValidationResult = validateChiTiet(orderData.chiTiet || [])
+  // Process address results
+  let validatedAddress = null
+  if (addressResults.status === 'fulfilled') {
+    validatedAddress = addressResults.value.validatedAddress
+    transformationErrors.push(...addressResults.value.errors)
+    console.log('✅ [PARALLEL] Address validation completed')
+  } else {
+    console.error('❌ [PARALLEL] Address validation failed:', addressResults.reason)
+    transformationErrors.push({
+      type: 'address_parallel',
+      message: 'Lỗi xử lý song song địa chỉ giao hàng',
+      severity: 'error'
+    })
+    validatedAddress = null
+  }
 
-    if (!chiTietValidationResult.valid) {
-      console.error('❌ [VALIDATION ERROR] chiTiet validation failed:', chiTietValidationResult.error)
-      console.error('❌ [VALIDATION ERROR] Invalid items:', chiTietValidationResult.invalidItems)
+  // Process recipient results
+  let recipientInfo = null
+  if (recipientResults.status === 'fulfilled') {
+    recipientInfo = recipientResults.value.recipientInfo
+    transformationErrors.push(...recipientResults.value.errors)
+    console.log('✅ [PARALLEL] Recipient validation completed')
+  } else {
+    console.error('❌ [PARALLEL] Recipient validation failed:', recipientResults.reason)
+    transformationErrors.push({
+      type: 'recipient_parallel',
+      message: 'Lỗi xử lý song song thông tin người nhận',
+      severity: 'error'
+    })
+    recipientInfo = {
+      hoTen: '',
+      soDienThoai: '',
+      email: ''
+    }
+  }
 
-      // Track error for summary
-      transformationErrors.push({
-        type: 'chiTiet_validation',
-        message: `${chiTietValidationResult.invalidItems?.length || 0} sản phẩm có dữ liệu không hợp lệ`,
-        severity: 'warn'
-      })
-
-      // Show user notification for validation failure
+  // Show user notifications for validation failures
+  transformationErrors.forEach(error => {
+    if (error.severity === 'warn' && error.type.includes('validation')) {
       toast.add({
         severity: 'warn',
-        summary: 'Dữ liệu sản phẩm không hợp lệ',
-        detail: `Phát hiện ${chiTietValidationResult.invalidItems?.length || 0} sản phẩm có dữ liệu không hợp lệ. Hệ thống sẽ bỏ qua các sản phẩm này.`,
+        summary: error.type.includes('chiTiet') ? 'Dữ liệu sản phẩm không hợp lệ' :
+                 error.type.includes('address') ? 'Địa chỉ giao hàng không đầy đủ' :
+                 'Thông tin người nhận không đầy đủ',
+        detail: error.message,
+        life: 5000
+      })
+    } else if (error.severity === 'error') {
+      toast.add({
+        severity: 'error',
+        summary: 'Lỗi xử lý dữ liệu',
+        detail: error.message,
         life: 5000
       })
     }
-
-    if (orderData.chiTiet && Array.isArray(orderData.chiTiet) && orderData.chiTiet.length > 0) {
-      // Use validated items only
-      const itemsToProcess = chiTietValidationResult.valid ?
-                            orderData.chiTiet :
-                            chiTietValidationResult.validItems || []
-
-      console.log(`🔄 [TRANSFORM] Processing ${itemsToProcess.length} valid chiTiet items out of ${orderData.chiTiet.length} total`)
-
-      sanPhamList = itemsToProcess.map((item, index) => {
-        console.log(`🔄 [TRANSFORM DEBUG] Processing chiTiet item ${index}:`, item)
-
-        // Additional runtime validation for critical fields
-        if (!item.sanPhamChiTietId) {
-          console.warn(`⚠️ [TRANSFORM WARNING] Missing sanPhamChiTietId in chiTiet item ${index}`)
-        }
-
-        // Transform chiTiet item to sanPhamList format following OrderEditOld.vue pattern
-        const transformedItem = {
-          // Preserve original chiTiet ID if available
-          id: item.id,
-
-          // Create sanPhamChiTiet object structure expected by frontend
-          sanPhamChiTiet: {
-            id: item.sanPhamChiTietId,
-            serialNumberId: item.serialNumberId,
-            serialNumber: item.serialNumber,
-            // Use giaBan from chiTiet as the current selling price
-            giaBan: item.giaBan,
-            // Include snapshot data for display
-            sku: item.skuSnapshot,
-            tenSanPham: item.tenSanPhamSnapshot,
-            hinhAnh: item.hinhAnhSnapshot ? [item.hinhAnhSnapshot] : []
-          },
-
-          // Order line item details
-          soLuong: item.soLuong || 1,
-          donGia: item.giaBan || item.donGia || 0,
-          thanhTien: item.thanhTien || (item.giaBan * item.soLuong) || 0,
-
-          // Preserve serial number at item level for easy access
-          serialNumber: item.serialNumber
-        }
-
-        console.log(`✅ [TRANSFORM DEBUG] Transformed item ${index}:`, transformedItem)
-        return transformedItem
-      })
-
-      console.log(`✅ [TRANSFORM SUCCESS] Successfully transformed ${sanPhamList.length} chiTiet items to sanPhamList`)
-
-      // Log validation summary
-      if (chiTietValidationResult && !chiTietValidationResult.valid) {
-        console.warn(`⚠️ [VALIDATION SUMMARY] Processed ${chiTietValidationResult.validCount}/${chiTietValidationResult.totalItems} valid items`)
-      }
-    } else {
-      console.log('ℹ️ [TRANSFORM INFO] No chiTiet array found, using empty sanPhamList')
-    }
-  } catch (error) {
-    console.error('❌ [TRANSFORM ERROR] Failed to transform chiTiet to sanPhamList:', error)
-
-    // Show user notification for transformation failure
-    toast.add({
-      severity: 'error',
-      summary: 'Lỗi xử lý dữ liệu sản phẩm',
-      detail: 'Không thể xử lý danh sách sản phẩm. Giỏ hàng sẽ hiển thị trống.',
-      life: 5000
-    })
-
-    // Fallback to empty array to prevent crashes
-    sanPhamList = []
-  }
+  })
 
   // ENHANCED VOUCHER RECONSTRUCTION with comprehensive validation
   let voucherList = []
@@ -2397,53 +2811,108 @@ const transformOrderForEdit = async (orderData) => {
                             orderData.voucherCodes :
                             voucherValidationResult.validCodes || []
 
-      console.log(`🎫 [VOUCHER] Starting voucher reconstruction for ${codesToProcess.length} valid codes out of ${orderData.voucherCodes.length} total`)
+      console.log(`🎫 [VOUCHER] Starting optimized voucher reconstruction for ${codesToProcess.length} valid codes out of ${orderData.voucherCodes.length} total`)
 
-      // Use Promise.all for parallel voucher fetching with validated codes
-      voucherList = await Promise.all(
-        codesToProcess.map(async (code, index) => {
+      // OPTIMIZATION: Separate cached and uncached vouchers for intelligent processing
+      const cachedVouchers = new Map()
+      const uncachedCodes = []
+
+      // Check cache first to minimize API calls
+      codesToProcess.forEach(code => {
+        const cachedVoucher = voucherStore.getVoucherByCode(code)
+        if (cachedVoucher) {
+          console.log(`✅ [VOUCHER] Found voucher in store cache: ${code}`)
+          cachedVouchers.set(code, cachedVoucher)
+        } else {
+          uncachedCodes.push(code)
+        }
+      })
+
+      console.log(`🎫 [VOUCHER] Cache analysis: ${cachedVouchers.size} cached, ${uncachedCodes.length} need API fetch`)
+
+      // Process uncached vouchers with batch operations for controlled parallel execution
+      let freshVouchers = []
+      if (uncachedCodes.length > 0) {
+        console.log(`🔄 [VOUCHER] Fetching ${uncachedCodes.length} vouchers from API using batch operations`)
+
+        const voucherFetchOperations = uncachedCodes.map(code => async () => {
           try {
-            console.log(`🎫 [VOUCHER] Processing voucher code ${index + 1}/${codesToProcess.length}: ${code}`)
-
-            // First, try to get voucher from store cache
-            const voucher = voucherStore.getVoucherByCode(code)
-
-            if (voucher) {
-              console.log(`✅ [VOUCHER] Found voucher in store cache: ${code}`)
-              return voucher
-            }
-
-            // Fallback: fetch from API if not in store
             console.log(`🔄 [VOUCHER] Fetching voucher from API: ${code}`)
             const response = await voucherApi.getVoucherByCode(code)
 
             if (response.success && response.data) {
               console.log(`✅ [VOUCHER] Successfully fetched voucher from API: ${code}`)
-              return response.data
+              return { code, voucher: response.data, success: true }
             } else {
               console.warn(`⚠️ [VOUCHER] API returned unsuccessful response for: ${code}`, response)
-              // Return minimal fallback object
               return {
+                code,
+                voucher: {
+                  maPhieuGiamGia: code,
+                  tenPhieuGiamGia: `Voucher ${code}`,
+                  giaTriGiam: 0,
+                  isReconstructed: true
+                },
+                success: false
+              }
+            }
+          } catch (error) {
+            console.error(`❌ [VOUCHER] Failed to fetch voucher: ${code}`, error)
+            return {
+              code,
+              voucher: {
                 maPhieuGiamGia: code,
                 tenPhieuGiamGia: `Voucher ${code}`,
                 giaTriGiam: 0,
-                isReconstructed: true // Flag to indicate this is a fallback
-              }
-            }
-
-          } catch (error) {
-            console.error(`❌ [VOUCHER] Failed to reconstruct voucher: ${code}`, error)
-            // Return minimal fallback object to prevent crashes
-            return {
-              maPhieuGiamGia: code,
-              tenPhieuGiamGia: `Voucher ${code}`,
-              giaTriGiam: 0,
-              isReconstructed: true,
-              hasError: true
+                isReconstructed: true,
+                hasError: true
+              },
+              success: false
             }
           }
         })
-      )
+
+        // Use batchOperations for controlled parallel execution (batch size 3, 50ms delay)
+        const batchResults = await batchOperations(voucherFetchOperations, 3, 50)
+
+        // Process batch results and extract vouchers
+        freshVouchers = batchResults.map(result => {
+          if (result.status === 'fulfilled') {
+            return result.value
+          } else {
+            console.error('❌ [VOUCHER] Batch operation failed:', result.reason)
+            return {
+              code: 'unknown',
+              voucher: {
+                maPhieuGiamGia: 'unknown',
+                tenPhieuGiamGia: 'Error Voucher',
+                giaTriGiam: 0,
+                isReconstructed: true,
+                hasError: true
+              },
+              success: false
+            }
+          }
+        })
+      }
+
+      // Combine cached and fresh vouchers in original order
+      voucherList = codesToProcess.map(code => {
+        if (cachedVouchers.has(code)) {
+          return cachedVouchers.get(code)
+        } else {
+          const freshVoucherResult = freshVouchers.find(result => result.code === code)
+          return freshVoucherResult ? freshVoucherResult.voucher : {
+            maPhieuGiamGia: code,
+            tenPhieuGiamGia: `Voucher ${code}`,
+            giaTriGiam: 0,
+            isReconstructed: true,
+            hasError: true
+          }
+        }
+      })
+
+      console.log(`✅ [VOUCHER] Optimized reconstruction completed: ${voucherList.length} vouchers processed`)
 
       console.log(`✅ [VOUCHER] Successfully reconstructed ${voucherList.length} vouchers`)
 
@@ -2485,97 +2954,14 @@ const transformOrderForEdit = async (orderData) => {
     // ENHANCED DELIVERY STATE DERIVATION: Derive giaohang from address validity
     giaohang: deriveDeliveryState(orderData),
 
-    // ENHANCED ADDRESS VALIDATION: Validate delivery address if present
-    diaChiGiaoHang: (() => {
-      try {
-        if (!orderData.diaChiGiaoHang) {
-          return null
-        }
-
-        console.log('🔍 [VALIDATION] Starting address validation...')
-        const addressValidation = validateAddress(orderData.diaChiGiaoHang)
-
-        if (!addressValidation.valid) {
-          console.warn('⚠️ [VALIDATION WARNING] Address validation failed:', addressValidation.error)
-          console.warn('⚠️ [VALIDATION WARNING] Missing fields:', addressValidation.missingFields)
-          console.warn('⚠️ [VALIDATION WARNING] Invalid fields:', addressValidation.invalidFields)
-
-          // Show user notification for address validation issues
-          if (orderData.giaohang) { // Only show warning for delivery orders
-            toast.add({
-              severity: 'warn',
-              summary: 'Địa chỉ giao hàng không đầy đủ',
-              detail: 'Một số thông tin địa chỉ bị thiếu hoặc không hợp lệ. Vui lòng kiểm tra lại.',
-              life: 5000
-            })
-          }
-        }
-
-        return orderData.diaChiGiaoHang
-      } catch (error) {
-        console.error('❌ [VALIDATION ERROR] Failed to validate address:', error)
-
-        // Show user notification for validation failure
-        toast.add({
-          severity: 'error',
-          summary: 'Lỗi xử lý địa chỉ giao hàng',
-          detail: 'Không thể xử lý địa chỉ giao hàng. Vui lòng nhập lại.',
-          life: 5000
-        })
-
-        // Return null for fallback
-        return null
-      }
-    })(),
+    // PARALLEL PROCESSED ADDRESS: Use validated address from parallel processing
+    diaChiGiaoHang: validatedAddress,
 
     // Ensure customer information is available
     khachHang: orderData.khachHang || null,
 
-    // ENHANCED RECIPIENT INFORMATION CONSTRUCTION with validation
-    nguoiNhan: (() => {
-      try {
-        console.log('🔍 [VALIDATION] Starting recipient validation...')
-        const recipientValidation = validateRecipient(orderData)
-
-        if (!recipientValidation.valid) {
-          console.warn('⚠️ [VALIDATION WARNING] Recipient validation failed:', recipientValidation.error)
-          console.warn('⚠️ [VALIDATION WARNING] Issues:', recipientValidation.issues)
-
-          // Show user notification for recipient validation issues
-          if (orderData.giaohang) { // Only show warning for delivery orders
-            toast.add({
-              severity: 'warn',
-              summary: 'Thông tin người nhận không đầy đủ',
-              detail: 'Một số thông tin người nhận bị thiếu hoặc không hợp lệ. Vui lòng kiểm tra lại.',
-              life: 5000
-            })
-          }
-        }
-
-        return {
-          hoTen: orderData.nguoiNhanTen || '',
-          soDienThoai: orderData.nguoiNhanSdt || '',
-          email: orderData.nguoiNhanEmail || ''
-        }
-      } catch (error) {
-        console.error('❌ [VALIDATION ERROR] Failed to validate recipient information:', error)
-
-        // Show user notification for validation failure
-        toast.add({
-          severity: 'error',
-          summary: 'Lỗi xử lý thông tin người nhận',
-          detail: 'Không thể xử lý thông tin người nhận. Vui lòng nhập lại.',
-          life: 5000
-        })
-
-        // Return fallback object
-        return {
-          hoTen: '',
-          soDienThoai: '',
-          email: ''
-        }
-      }
-    })(),
+    // PARALLEL PROCESSED RECIPIENT: Use validated recipient info from parallel processing
+    nguoiNhan: recipientInfo,
 
     // Ensure totals are properly calculated
     tongTienHang: orderData.tongTienHang || 0,
@@ -2585,7 +2971,7 @@ const transformOrderForEdit = async (orderData) => {
 
     // Preserve order metadata
     maHoaDon: orderData.maHoaDon,
-    trangThai: orderData.trangThai,
+    trangThaiDonHang: orderData.trangThaiDonHang,
     loaiHoaDon: orderData.loaiHoaDon,
     ngayTao: orderData.ngayTao,
     ngayCapNhat: orderData.ngayCapNhat
@@ -2594,14 +2980,15 @@ const transformOrderForEdit = async (orderData) => {
   console.log('✅ [RECIPIENT] Constructed nguoiNhan object:', transformedOrder.nguoiNhan)
   console.log('✅ [VOUCHER] Final voucher list:', transformedOrder.voucherList)
 
-  // TRANSFORMATION SUMMARY: Log comprehensive summary of transformation results
-  console.log('📊 [TRANSFORM SUMMARY] Transformation completed with the following results:')
-  console.log(`📊 [TRANSFORM SUMMARY] - Products: ${transformedOrder.sanPhamList?.length || 0} items`)
-  console.log(`📊 [TRANSFORM SUMMARY] - Vouchers: ${transformedOrder.voucherList?.length || 0} items`)
-  console.log(`📊 [TRANSFORM SUMMARY] - Delivery: ${transformedOrder.giaohang ? 'Yes' : 'No'}`)
-  console.log(`📊 [TRANSFORM SUMMARY] - Address: ${transformedOrder.diaChiGiaoHang ? 'Present' : 'Not present'}`)
-  console.log(`📊 [TRANSFORM SUMMARY] - Recipient: ${transformedOrder.nguoiNhan?.hoTen ? 'Present' : 'Not present'}`)
-  console.log(`📊 [TRANSFORM SUMMARY] - Errors encountered: ${transformationErrors.length}`)
+  // TRANSFORMATION SUMMARY: Log comprehensive summary of parallel transformation results
+  console.log('📊 [PARALLEL SUMMARY] Parallel transformation completed with the following results:')
+  console.log(`📊 [PARALLEL SUMMARY] - Products: ${transformedOrder.sanPhamList?.length || 0} items (parallel processed)`)
+  console.log(`📊 [PARALLEL SUMMARY] - Vouchers: ${transformedOrder.voucherList?.length || 0} items (optimized batch)`)
+  console.log(`📊 [PARALLEL SUMMARY] - Delivery: ${transformedOrder.giaohang ? 'Yes' : 'No'}`)
+  console.log(`📊 [PARALLEL SUMMARY] - Address: ${transformedOrder.diaChiGiaoHang ? 'Present' : 'Not present'} (parallel validated)`)
+  console.log(`📊 [PARALLEL SUMMARY] - Recipient: ${transformedOrder.nguoiNhan?.hoTen ? 'Present' : 'Not present'} (parallel validated)`)
+  console.log(`📊 [PARALLEL SUMMARY] - Errors encountered: ${transformationErrors.length}`)
+  console.log(`📊 [PARALLEL SUMMARY] - Progressive loading: Basic info available immediately`)
 
   if (transformationErrors.length > 0) {
     console.warn('⚠️ [TRANSFORM SUMMARY] Transformation errors:', transformationErrors)
@@ -2628,17 +3015,17 @@ const transformOrderForEdit = async (orderData) => {
 }
 
 // Load order data for editing
-const loadOrderData = async () => {
+const loadOrderData = async (forceRefresh = false) => {
   if (!isEditMode.value || !orderId.value) return
 
   loading.value = true
   error.value = null
 
   try {
-    console.log('Loading order data for ID:', orderId.value)
+    console.log('Loading order data for ID:', orderId.value, 'forceRefresh:', forceRefresh)
 
-    // Fetch order data from API
-    const orderData = await fetchOrderById(orderId.value)
+    // Fetch order data from API with optional force refresh
+    const orderData = await fetchOrderById(orderId.value, forceRefresh)
 
     if (!orderData) {
       throw new Error('Không tìm thấy đơn hàng')
@@ -2668,6 +3055,17 @@ const loadOrderData = async () => {
 
     // Calculate totals to ensure consistency
     calculateCurrentOrderTotals()
+
+    // Load audit history for timeline
+    if (loadAuditHistory && transformedOrder.id) {
+      try {
+        await loadAuditHistory(transformedOrder.id)
+        console.log('✅ [TIMELINE] Audit history loaded successfully')
+      } catch (auditError) {
+        console.warn('⚠️ [TIMELINE] Failed to load audit history:', auditError)
+        // Don't fail the entire load process if audit history fails
+      }
+    }
 
     console.log('Order data loading completed successfully')
     console.log('🔒 Cleanup tracking initialized:', unifiedCleanupStrategy.getCleanupSummary())
@@ -3195,6 +3593,198 @@ const processedCartItems = computed(() => {
     }
   })
 })
+
+// Timeline computed properties - adapted from admin OrderDetail.vue with horizontal layout
+const orderTimeline = computed(() => {
+  if (!currentOrder.value) return []
+
+  const timeline = []
+  const order = currentOrder.value
+
+  // Use orderStore status mapping like OrderDetail.vue
+  const getOrderStatusInfo = (status) => {
+    return orderStore.getOrderStatusInfo(status)
+  }
+
+  // Order creation
+  if (order.ngayTao) {
+    const statusInfo = getOrderStatusInfo('CHO_XAC_NHAN')
+    timeline.push({
+      status: 'Đơn hàng được tạo',
+      date: order.ngayTao,
+      icon: 'pi pi-plus',
+      color: statusInfo.color,
+      severity: statusInfo.severity,
+      description: `Đơn hàng ${order.maHoaDon || 'mới'} được tạo`,
+      isCompleted: true
+    })
+  }
+
+  // Current status
+  if (order.trangThaiDonHang) {
+    const statusInfo = getOrderStatusInfo(order.trangThaiDonHang)
+    timeline.push({
+      status: statusInfo.label,
+      date: order.ngayCapNhat || order.ngayTao,
+      icon: statusInfo.icon,
+      color: statusInfo.color,
+      severity: statusInfo.severity,
+      description: `Trạng thái hiện tại: ${statusInfo.label}`,
+      isCompleted: true,
+      isCurrent: true
+    })
+  }
+
+  // Add future steps based on current status
+  const currentStatus = order.trangThaiDonHang
+  const futureSteps = []
+
+  if (currentStatus === 'CHO_XAC_NHAN') {
+    futureSteps.push(
+      { status: 'Xác nhận đơn hàng', icon: 'pi pi-check', color: '#6b7280', severity: 'secondary' },
+      { status: 'Đang xử lý', icon: 'pi pi-cog', color: '#6b7280', severity: 'secondary' },
+      { status: 'Chờ giao hàng', icon: 'pi pi-package', color: '#6b7280', severity: 'secondary' },
+      { status: 'Đang giao hàng', icon: 'pi pi-truck', color: '#6b7280', severity: 'secondary' },
+      { status: 'Hoàn thành', icon: 'pi pi-verified', color: '#6b7280', severity: 'secondary' }
+    )
+  } else if (currentStatus === 'DA_XAC_NHAN') {
+    futureSteps.push(
+      { status: 'Đang xử lý', icon: 'pi pi-cog', color: '#6b7280', severity: 'secondary' },
+      { status: 'Chờ giao hàng', icon: 'pi pi-package', color: '#6b7280', severity: 'secondary' },
+      { status: 'Đang giao hàng', icon: 'pi pi-truck', color: '#6b7280', severity: 'secondary' },
+      { status: 'Hoàn thành', icon: 'pi pi-verified', color: '#6b7280', severity: 'secondary' }
+    )
+  } else if (currentStatus === 'DANG_XU_LY') {
+    futureSteps.push(
+      { status: 'Chờ giao hàng', icon: 'pi pi-package', color: '#6b7280', severity: 'secondary' },
+      { status: 'Đang giao hàng', icon: 'pi pi-truck', color: '#6b7280', severity: 'secondary' },
+      { status: 'Hoàn thành', icon: 'pi pi-verified', color: '#6b7280', severity: 'secondary' }
+    )
+  } else if (currentStatus === 'CHO_GIAO_HANG') {
+    futureSteps.push(
+      { status: 'Đang giao hàng', icon: 'pi pi-truck', color: '#6b7280', severity: 'secondary' },
+      { status: 'Hoàn thành', icon: 'pi pi-verified', color: '#6b7280', severity: 'secondary' }
+    )
+  } else if (currentStatus === 'DANG_GIAO_HANG') {
+    futureSteps.push(
+      { status: 'Đã giao hàng', icon: 'pi pi-check-circle', color: '#6b7280', severity: 'secondary' },
+      { status: 'Hoàn thành', icon: 'pi pi-verified', color: '#6b7280', severity: 'secondary' }
+    )
+  } else if (currentStatus === 'DA_GIAO_HANG') {
+    futureSteps.push(
+      { status: 'Hoàn thành', icon: 'pi pi-verified', color: '#6b7280', severity: 'secondary' }
+    )
+  }
+
+  // Add future steps
+  futureSteps.forEach(step => {
+    timeline.push({
+      ...step,
+      description: `Bước tiếp theo: ${step.status}`,
+      isCompleted: false,
+      isFuture: true
+    })
+  })
+
+  return timeline
+})
+
+// Available status updates - adapted from admin version
+const availableStatusUpdates = computed(() => {
+  if (!currentOrder.value?.trangThaiDonHang) return []
+
+  const currentStatus = currentOrder.value.trangThaiDonHang
+  const statusFlow = {
+    'CHO_XAC_NHAN': [
+      { value: 'DA_XAC_NHAN', label: 'Xác nhận đơn hàng', icon: 'pi pi-check', severity: 'success' },
+      { value: 'DA_HUY', label: 'Hủy đơn hàng', icon: 'pi pi-times', severity: 'danger' }
+    ],
+    'DA_XAC_NHAN': [
+      { value: 'DANG_XU_LY', label: 'Bắt đầu xử lý', icon: 'pi pi-cog', severity: 'info' },
+      { value: 'DA_HUY', label: 'Hủy đơn hàng', icon: 'pi pi-times', severity: 'danger' }
+    ],
+    'DANG_XU_LY': [
+      { value: 'CHO_GIAO_HANG', label: 'Chờ giao hàng', icon: 'pi pi-package', severity: 'info' },
+      { value: 'DANG_GIAO_HANG', label: 'Bắt đầu giao hàng', icon: 'pi pi-truck', severity: 'info' },
+      { value: 'DA_HUY', label: 'Hủy đơn hàng', icon: 'pi pi-times', severity: 'danger' }
+    ],
+    'CHO_GIAO_HANG': [
+      { value: 'DANG_GIAO_HANG', label: 'Bắt đầu giao hàng', icon: 'pi pi-truck', severity: 'info' },
+      { value: 'DA_HUY', label: 'Hủy đơn hàng', icon: 'pi pi-times', severity: 'danger' }
+    ],
+    'DANG_GIAO_HANG': [
+      { value: 'DA_GIAO_HANG', label: 'Hoàn thành giao hàng', icon: 'pi pi-check-circle', severity: 'success' },
+      { value: 'DA_HUY', label: 'Hủy đơn hàng', icon: 'pi pi-times', severity: 'danger' }
+    ],
+    'DA_GIAO_HANG': [
+      { value: 'HOAN_THANH', label: 'Hoàn thành đơn hàng', icon: 'pi pi-verified', severity: 'success' },
+      { value: 'YEU_CAU_TRA_HANG', label: 'Yêu cầu trả hàng', icon: 'pi pi-undo', severity: 'warning' }
+    ]
+  }
+
+  return statusFlow[currentStatus] || []
+})
+
+// Timeline display state
+const showTimeline = ref(true)
+
+// Status update methods - adapted from admin version
+const updateOrderStatus = async (newStatus, statusLabel) => {
+  if (!currentOrder.value?.id) {
+    toast.add({
+      severity: 'error',
+      summary: 'Lỗi',
+      detail: 'Không thể cập nhật trạng thái: Đơn hàng chưa được lưu',
+      life: 3000
+    })
+    return
+  }
+
+  try {
+    // Show confirmation dialog
+    const confirmed = await confirmDialog.show({
+      message: `Bạn có chắc chắn muốn ${statusLabel.toLowerCase()}?`,
+      header: 'Xác nhận thay đổi trạng thái',
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Xác nhận',
+      rejectLabel: 'Hủy'
+    })
+
+    if (!confirmed) return
+
+    // Update order status
+    await orderStore.updateOrderStatus(currentOrder.value.id, newStatus)
+
+    // Reload order data
+    await loadOrderData()
+
+    // Load audit history if available
+    if (loadAuditHistory) {
+      await loadAuditHistory(currentOrder.value.id)
+    }
+
+    toast.add({
+      severity: 'success',
+      summary: 'Thành công',
+      detail: `${statusLabel} thành công`,
+      life: 3000
+    })
+
+  } catch (error) {
+    console.error('Error updating order status:', error)
+    toast.add({
+      severity: 'error',
+      summary: 'Lỗi',
+      detail: error.message || 'Có lỗi xảy ra khi cập nhật trạng thái',
+      life: 3000
+    })
+  }
+}
+
+// Toggle timeline visibility
+const toggleTimeline = () => {
+  showTimeline.value = !showTimeline.value
+}
 
 // Methods
 const formatCurrency = (amount) => {
@@ -6973,9 +7563,9 @@ watch(
 watch(() => route.params.id, async (newId, oldId) => {
   if (newId !== oldId) {
     if (newId) {
-      // Load new order data
+      // Load new order data with force refresh
       try {
-        const orderData = await fetchOrderById(newId)
+        const orderData = await fetchOrderById(newId, true)
         if (orderData) {
           currentOrder.value = orderData
           document.title = `Chỉnh sửa đơn hàng ${orderData.maHoaDon} - LapXpert Admin`
@@ -7625,32 +8215,10 @@ const cleanupCurrentOrderReservations = async () => {
 
 // Initialize
 onMounted(async () => {
-  // Staff assignment is now handled automatically by the backend
+  console.log('🚀 [LIFECYCLE] Starting optimized component initialization...')
 
-  // Cleanup any pending cart reservations from previous session
-  await cleanupPendingReservations()
-
-  // Route parameter validation and order loading
-  if (isEditMode.value) {
-    if (!orderId.value) {
-      toast.add({
-        severity: 'error',
-        summary: 'Lỗi',
-        detail: 'ID đơn hàng không hợp lệ',
-        life: 5000
-      })
-      router.push('/orders')
-      return
-    }
-
-    // Load order data using our new comprehensive loading function
-    await loadOrderData()
-
-    // Update page title if order was loaded successfully
-    if (currentOrder.value?.maHoaDon) {
-      document.title = `Chỉnh sửa đơn hàng ${currentOrder.value.maHoaDon} - LapXpert Admin`
-    }
-  } else {
+  // PHASE 1: Critical validation and early exit conditions
+  if (!isEditMode.value) {
     // Not in edit mode - redirect to order list
     toast.add({
       severity: 'warn',
@@ -7662,38 +8230,153 @@ onMounted(async () => {
     return
   }
 
-  // Preload data for search functionality
-  try {
-    await customerStore.fetchCustomers()
-  } catch (error) {
-    logger.critical('Failed to preload data', {
-      error: error.message
-    }, 'initialization')
+  if (!orderId.value) {
+    toast.add({
+      severity: 'error',
+      summary: 'Lỗi',
+      detail: 'ID đơn hàng không hợp lệ',
+      life: 5000
+    })
+    router.push('/orders')
+    return
   }
 
-  // Initialize real-time features
+  // PHASE 2: Parallel execution of independent operations
+  console.log('🔄 [LIFECYCLE] Starting parallel initialization operations...')
+  updateInitializationPhase('parallelOperations', true)
+
+  const independentOperations = [
+    // Operation 1: Cleanup pending reservations (independent)
+    deduplicateRequest('cleanup-reservations', async () => {
+      console.log('🧹 [LIFECYCLE] Cleaning up pending reservations...')
+      await cleanupPendingReservations()
+      console.log('✅ [LIFECYCLE] Reservation cleanup completed')
+      return { operation: 'cleanup', success: true }
+    }),
+
+    // Operation 2: Preload customer data (independent)
+    deduplicateRequest('customer-preload', async () => {
+      console.log('👥 [LIFECYCLE] Preloading customer data...')
+      await customerStore.fetchCustomers()
+      console.log('✅ [LIFECYCLE] Customer data preloaded')
+      return { operation: 'customers', success: true }
+    }),
+
+    // Operation 3: Load shipping configuration (independent)
+    deduplicateRequest('shipping-config', async () => {
+      console.log('🚚 [LIFECYCLE] Loading shipping configuration...')
+      await loadShippingConfig()
+      console.log('✅ [LIFECYCLE] Shipping configuration loaded')
+      return { operation: 'shipping', success: true }
+    })
+  ]
+
+  // Execute independent operations in parallel
+  const parallelResults = await Promise.allSettled(independentOperations)
+
+  // Log parallel operation results
+  parallelResults.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      console.log(`✅ [LIFECYCLE] Parallel operation ${index + 1} completed:`, result.value)
+    } else {
+      console.error(`❌ [LIFECYCLE] Parallel operation ${index + 1} failed:`, result.reason)
+    }
+  })
+
+  updateInitializationPhase('parallelOperations', false)
+
+  // PHASE 3: Critical order data loading (must happen after parallel operations)
+  console.log('📊 [LIFECYCLE] Loading critical order data with force refresh...')
+  updateInitializationPhase('orderDataLoading', true)
+  const orderLoadStart = performance.now()
+
   try {
-    // Subscribe to voucher monitoring
-    subscribeToVoucherMonitoring()
+    // Load order data using our new comprehensive loading function with force refresh
+    await loadOrderData(true)
 
-    // Setup WebSocket integration callbacks for automatic voucher validation
-    setupVoucherWebSocketIntegration()
+    const orderLoadTime = performance.now() - orderLoadStart
+    console.log(`✅ [LIFECYCLE] Order data loaded in ${orderLoadTime.toFixed(2)}ms`)
 
-    // Monitor WebSocket connection status for user feedback
-    monitorWebSocketConnection()
+    // Update page title if order was loaded successfully
+    if (currentOrder.value?.maHoaDon) {
+      document.title = `Chỉnh sửa đơn hàng ${currentOrder.value.maHoaDon} - LapXpert Admin`
+      console.log(`📝 [LIFECYCLE] Page title updated for order ${currentOrder.value.maHoaDon}`)
+    }
 
-    // Subscribe to order expiration monitoring
-    subscribeToOrderExpiration()
+    updateInitializationPhase('orderDataLoading', false)
+  } catch (error) {
+    console.error('❌ [LIFECYCLE] Critical order data loading failed:', error)
+    updateInitializationPhase('orderDataLoading', false)
+    toast.add({
+      severity: 'error',
+      summary: 'Lỗi tải dữ liệu',
+      detail: 'Không thể tải thông tin đơn hàng. Vui lòng thử lại.',
+      life: 5000
+    })
+    return
+  }
 
-    // Subscribe to price updates for any existing cart items
-    const existingVariantIds =
-      currentOrder.value?.sanPhamList?.map((item) => item.sanPhamChiTiet?.id).filter(Boolean) || []
-    if (existingVariantIds.length > 0) {
-      subscribeToPriceUpdates(existingVariantIds)
+  // PHASE 4: Real-time features initialization (after core data is loaded)
+  console.log('🔄 [LIFECYCLE] Initializing real-time features...')
+  updateInitializationPhase('realTimeFeatures', true)
+
+  try {
+    const realTimeOperations = [
+      // Real-time operation 1: Voucher monitoring
+      async () => {
+        console.log('🎫 [LIFECYCLE] Setting up voucher monitoring...')
+        subscribeToVoucherMonitoring()
+        return 'voucher-monitoring'
+      },
+
+      // Real-time operation 2: WebSocket integration
+      async () => {
+        console.log('🔌 [LIFECYCLE] Setting up WebSocket integration...')
+        setupVoucherWebSocketIntegration()
+        monitorWebSocketConnection()
+        return 'websocket-integration'
+      },
+
+      // Real-time operation 3: Order expiration monitoring
+      async () => {
+        console.log('⏰ [LIFECYCLE] Setting up order expiration monitoring...')
+        subscribeToOrderExpiration()
+        return 'order-expiration'
+      },
+
+      // Real-time operation 4: Price updates for existing items
+      async () => {
+        console.log('💰 [LIFECYCLE] Setting up price update monitoring...')
+        const existingVariantIds =
+          currentOrder.value?.sanPhamList?.map((item) => item.sanPhamChiTiet?.id).filter(Boolean) || []
+        if (existingVariantIds.length > 0) {
+          subscribeToPriceUpdates(existingVariantIds)
+          return `price-updates-${existingVariantIds.length}-items`
+        }
+        return 'price-updates-no-items'
+      }
+    ]
+
+    // Execute real-time operations using batch processing for controlled execution
+    const realTimeResults = await batchOperations(realTimeOperations, 2, 100) // Batch size 2, 100ms delay
+
+    const successfulFeatures = realTimeResults
+      .filter(result => result.status === 'fulfilled')
+      .map(result => result.value)
+
+    const failedFeatures = realTimeResults
+      .filter(result => result.status === 'rejected')
+      .map(result => result.reason)
+
+    console.log('✅ [LIFECYCLE] Real-time features initialized:', successfulFeatures)
+
+    if (failedFeatures.length > 0) {
+      console.warn('⚠️ [LIFECYCLE] Some real-time features failed:', failedFeatures)
     }
 
     logger.debug('Real-time features initialized successfully', {
-      features: ['voucher monitoring', 'websocket integration', 'order expiration', 'price updates']
+      successful: successfulFeatures,
+      failed: failedFeatures.length
     }, 'initialization')
 
     // Run integration test validation in development mode
@@ -7703,7 +8386,11 @@ onMounted(async () => {
         logger.debug('Development mode integration test skipped', null, 'development')
       }, 2000) // Delay to ensure all components are fully initialized
     }
+
+    updateInitializationPhase('realTimeFeatures', false)
   } catch (error) {
+    console.error('❌ [LIFECYCLE] Failed to initialize real-time features:', error)
+    updateInitializationPhase('realTimeFeatures', false)
     logger.critical('Failed to initialize real-time features', {
       error: error.message
     }, 'initialization')
@@ -7716,21 +8403,26 @@ onMounted(async () => {
     })
   }
 
-  // Initialize shipping configuration
-  try {
-    await loadShippingConfig()
-    logger.debug('Shipping configuration loaded successfully', null, 'initialization')
-  } catch (error) {
-    logger.critical('Failed to load shipping configuration', {
-      error: error.message
-    }, 'initialization')
-  }
+  // PHASE 5: Event listeners setup (final phase)
+  console.log('🔧 [LIFECYCLE] Setting up event listeners...')
 
   // Add beforeunload event listener for page refresh/close detection
   window.addEventListener('beforeunload', handlePageUnload)
 
   // Also add pagehide event for better mobile browser support
   window.addEventListener('pagehide', handlePageUnload)
+
+  // LIFECYCLE SUMMARY: Log comprehensive initialization summary
+  const totalInitTime = performance.now() - orderLoadStart
+  console.log('📊 [LIFECYCLE SUMMARY] Component initialization completed:')
+  console.log(`📊 [LIFECYCLE SUMMARY] - Total time: ${totalInitTime.toFixed(2)}ms`)
+  console.log(`📊 [LIFECYCLE SUMMARY] - Parallel operations: ${parallelResults.filter(r => r.status === 'fulfilled').length}/${parallelResults.length} successful`)
+  console.log(`📊 [LIFECYCLE SUMMARY] - Order data: ${currentOrder.value ? 'Loaded' : 'Failed'}`)
+  console.log(`📊 [LIFECYCLE SUMMARY] - Real-time features: Initialized`)
+
+  // Mark initialization as completed
+  updateInitializationPhase('completed', true)
+  console.log('✅ [LIFECYCLE] Optimized component initialization completed successfully')
 })
 
 // Watch for route changes to reload order data
@@ -7781,5 +8473,243 @@ onUnmounted(async () => {
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* Timeline Styles - Card-Only Design */
+.timeline-cards-container {
+  padding: 1rem 0;
+}
+
+.timeline-card-integrated {
+  min-width: 160px;
+  max-width: 200px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border: 2px solid transparent;
+  transition: all 0.3s ease;
+  padding: 1.5rem 1rem;
+  text-align: center;
+  position: relative;
+}
+
+.timeline-card-integrated:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+/* Card Status States */
+.timeline-card-completed {
+  border-color: #10b981;
+  background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
+}
+
+.timeline-card-current {
+  border-color: #3b82f6;
+  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.2);
+}
+
+.timeline-card-future {
+  border-color: #e5e7eb;
+  background: #f9fafb;
+  opacity: 0.7;
+}
+
+/* Icon Container */
+.timeline-icon-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.timeline-icon-wrapper {
+  position: relative;
+  width: 3rem;
+  height: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.timeline-icon {
+  font-size: 1.25rem;
+  color: #6b7280;
+}
+
+.timeline-card-completed .timeline-icon {
+  color: #10b981;
+}
+
+.timeline-card-current .timeline-icon {
+  color: #3b82f6;
+}
+
+.timeline-card-future .timeline-icon {
+  color: #9ca3af;
+}
+
+/* Status Badge Overlays */
+.timeline-status-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid white;
+  font-size: 0.75rem;
+}
+
+.timeline-status-completed {
+  background: #10b981;
+  color: white;
+}
+
+.timeline-status-current {
+  background: #3b82f6;
+  color: white;
+}
+
+.timeline-status-future {
+  background: #e5e7eb;
+  color: #9ca3af;
+}
+
+/* Pulse Animation for Current Status */
+.timeline-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: white;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(0.8);
+    opacity: 1;
+  }
+}
+
+/* Card Content */
+.timeline-card-title {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #1f2937;
+  margin-bottom: 0.5rem;
+  line-height: 1.25;
+}
+
+.timeline-card-date {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-bottom: 0.25rem;
+}
+
+.timeline-card-description {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  line-height: 1.3;
+}
+
+/* Responsive Timeline Cards */
+@media (max-width: 768px) {
+  .timeline-card-integrated {
+    min-width: 140px;
+    max-width: 160px;
+    padding: 1rem 0.75rem;
+  }
+
+  .timeline-icon-wrapper {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  .timeline-icon {
+    font-size: 1rem;
+  }
+
+  .timeline-status-badge {
+    width: 1rem;
+    height: 1rem;
+    top: -2px;
+    right: -2px;
+  }
+
+  .timeline-card-title {
+    font-size: 0.8rem;
+  }
+
+  .timeline-card-date,
+  .timeline-card-description {
+    font-size: 0.7rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .timeline-card-integrated {
+    min-width: 120px;
+    max-width: 140px;
+    padding: 0.75rem 0.5rem;
+  }
+
+  .timeline-icon-wrapper {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .timeline-icon {
+    font-size: 0.875rem;
+  }
+
+  .timeline-status-badge {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+
+  .timeline-pulse {
+    width: 6px;
+    height: 6px;
+  }
+
+  .timeline-card-title {
+    font-size: 0.75rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .timeline-card-date,
+  .timeline-card-description {
+    font-size: 0.65rem;
+  }
+}
+
+/* Timeline connector line styling */
+:deep(.p-timeline-horizontal .p-timeline-event-connector) {
+  background: linear-gradient(to right, #10b981, #d1d5db);
+  height: 3px;
+}
+
+:deep(.p-timeline-horizontal .p-timeline-event-content) {
+  padding-top: 1rem;
+}
+
+:deep(.p-timeline-horizontal .p-timeline-event-marker) {
+  border: none !important;
+  background: transparent !important;
 }
 </style>
