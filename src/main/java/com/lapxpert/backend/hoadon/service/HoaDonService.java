@@ -1843,6 +1843,28 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
      * Update order line items with inventory management.
      * This handles adding, removing, and updating quantities of line items.
      */
+    /**
+     * Helper method to get existing serial numbers for an order
+     * Used to distinguish between existing SOLD serial numbers and new items requiring reservation
+     */
+    private Set<String> getExistingOrderSerialNumbers(Long orderId) {
+        try {
+            List<SerialNumber> existingSerialNumbers = serialNumberService.getSerialNumbersByOrderId(orderId.toString());
+            Set<String> serialNumberValues = existingSerialNumbers.stream()
+                    .map(SerialNumber::getSerialNumberValue)
+                    .collect(Collectors.toSet());
+
+            log.debug("Found {} existing serial numbers for order {}: {}",
+                     serialNumberValues.size(), orderId, serialNumberValues);
+            return serialNumberValues;
+        } catch (Exception e) {
+            log.error("Failed to fetch existing serial numbers for order {}: {}", orderId, e.getMessage());
+            // Return empty set to be safe - this will cause all items to be treated as new
+            // which is safer than potentially missing existing items
+            return new HashSet<>();
+        }
+    }
+
     @Transactional
     public void updateOrderLineItems(HoaDon existingHoaDon, HoaDonDto hoaDonDto) {
         // Only allow line item updates for orders that haven't been shipped
@@ -1852,6 +1874,9 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
                 existingHoaDon.getTrangThaiDonHang() == TrangThaiDonHang.DA_HUY) {
             throw new IllegalStateException("Cannot modify line items for orders in status: " + existingHoaDon.getTrangThaiDonHang());
         }
+
+        log.info("Starting order line items update for order {} with {} new items",
+                 existingHoaDon.getId(), hoaDonDto.getChiTiet() != null ? hoaDonDto.getChiTiet().size() : 0);
 
         // Get current line items
         List<HoaDonChiTiet> currentItems = new ArrayList<>(existingHoaDon.getHoaDonChiTiets());
@@ -1978,15 +2003,34 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
 
         // Apply inventory reservations for new items
         if (!itemsToReserve.isEmpty()) {
-            // Create temporary order items for reservation
+            // CRITICAL FIX: Get existing serial numbers to avoid re-reserving SOLD items
+            Set<String> existingSerialNumbers = getExistingOrderSerialNumbers(existingHoaDon.getId());
+            log.info("Found {} existing serial numbers for order {}", existingSerialNumbers.size(), existingHoaDon.getId());
+
+            // Create temporary order items for reservation, filtering out existing serial numbers
             List<HoaDonChiTietDto> tempOrderItems = new ArrayList<>();
+            int filteredItemsCount = 0;
+
             for (HoaDonChiTietDto newItem : newItems) {
                 if (newItem.getId() == null) {
-                    tempOrderItems.add(newItem);
+                    // Check if this item has a serial number that already exists in the order
+                    if (newItem.getSerialNumber() != null && existingSerialNumbers.contains(newItem.getSerialNumber())) {
+                        log.debug("Skipping reservation for existing serial number: {} (already SOLD/committed to this order)",
+                                 newItem.getSerialNumber());
+                        filteredItemsCount++;
+                    } else {
+                        // This is a truly new item that needs reservation
+                        tempOrderItems.add(newItem);
+                        log.debug("Adding new item for reservation: sanPhamChiTietId={}, serialNumber={}",
+                                 newItem.getSanPhamChiTietId(), newItem.getSerialNumber());
+                    }
                 }
             }
 
-            // Reserve items using the existing service method
+            log.info("Filtered out {} existing items, {} truly new items need reservation",
+                     filteredItemsCount, tempOrderItems.size());
+
+            // Reserve items using the existing service method - only for truly new items
             if (!tempOrderItems.isEmpty()) {
                 serialNumberService.reserveItemsWithTracking(
                         tempOrderItems,
@@ -1994,8 +2038,10 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
                         existingHoaDon.getId().toString(),
                         "system"
                 );
+                log.info("Successfully reserved {} new items for order update", tempOrderItems.size());
+            } else {
+                log.info("No new items requiring reservation for order update");
             }
-            log.info("Reserved {} items for order update", itemsToReserve.size());
         }
 
         // Recalculate order totals
@@ -2642,13 +2688,284 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
     }
 
     /**
-     * Enhanced toDto method that includes payment method population.
-     * This replaces direct mapper calls to ensure payment method is always populated.
+     * Populate serial number information in HoaDonChiTietDto objects from SerialNumber records.
+     * This method enhances the DTO with serial number data after mapping with comprehensive
+     * error handling, performance tracking, and graceful degradation.
+     * Follows the same pattern as populatePaymentMethod for consistency.
+     *
+     * @param hoaDonDto The order DTO to populate with serial number information
+     */
+    private void populateSerialNumbers(HoaDonDto hoaDonDto) {
+        // Performance tracking
+        long startTime = System.currentTimeMillis();
+        String orderId = hoaDonDto != null && hoaDonDto.getId() != null ? hoaDonDto.getId().toString() : "unknown";
+
+        // Input validation with detailed logging
+        if (hoaDonDto == null) {
+            log.warn("Serial number population skipped - hoaDonDto is null");
+            return;
+        }
+
+        if (hoaDonDto.getId() == null) {
+            log.warn("Serial number population skipped - order ID is null");
+            return;
+        }
+
+        if (hoaDonDto.getChiTiet() == null || hoaDonDto.getChiTiet().isEmpty()) {
+            log.debug("Serial number population skipped - no order line items found for order ID: {}", orderId);
+            return;
+        }
+
+        try {
+            log.debug("Starting serial number population for order ID: {} with {} line items",
+                     orderId, hoaDonDto.getChiTiet().size());
+
+            // Query serial numbers with enhanced error handling
+            List<SerialNumber> orderSerialNumbers = null;
+            long queryStartTime = System.currentTimeMillis();
+
+            try {
+                orderSerialNumbers = serialNumberService.getSerialNumbersByOrderId(orderId);
+                long queryTime = System.currentTimeMillis() - queryStartTime;
+                log.debug("Serial number query completed for order ID: {} in {}ms", orderId, queryTime);
+
+                // Performance warning for slow queries
+                if (queryTime > 1000) {
+                    log.warn("Slow serial number query detected for order ID: {} - took {}ms", orderId, queryTime);
+                }
+
+            } catch (Exception queryException) {
+                long queryTime = System.currentTimeMillis() - queryStartTime;
+                log.error("Failed to query serial numbers for order ID: {} after {}ms - Error: {}",
+                         orderId, queryTime, queryException.getMessage(), queryException);
+
+                // Graceful degradation - continue without serial numbers
+                log.warn("Continuing order processing without serial numbers for order ID: {}", orderId);
+                return;
+            }
+
+            // Handle empty or null results
+            if (orderSerialNumbers == null) {
+                log.warn("SerialNumberService returned null for order ID: {} - this may indicate a service issue", orderId);
+                return;
+            }
+
+            if (orderSerialNumbers.isEmpty()) {
+                log.debug("No serial numbers found for order ID: {} - order may not have serialized products", orderId);
+                return;
+            }
+
+            log.debug("Found {} serial numbers for order ID: {}", orderSerialNumbers.size(), orderId);
+
+            // Validate and filter serial numbers with detailed logging
+            List<SerialNumber> validSerialNumbers = new ArrayList<>();
+            int invalidSerialCount = 0;
+
+            for (SerialNumber serialNumber : orderSerialNumbers) {
+                if (serialNumber == null) {
+                    invalidSerialCount++;
+                    log.warn("Null serial number found in results for order ID: {}", orderId);
+                    continue;
+                }
+
+                if (serialNumber.getSanPhamChiTiet() == null) {
+                    invalidSerialCount++;
+                    log.warn("Serial number {} has null product variant for order ID: {}",
+                            serialNumber.getId(), orderId);
+                    continue;
+                }
+
+                if (serialNumber.getSanPhamChiTiet().getId() == null) {
+                    invalidSerialCount++;
+                    log.warn("Serial number {} has product variant with null ID for order ID: {}",
+                            serialNumber.getId(), orderId);
+                    continue;
+                }
+
+                validSerialNumbers.add(serialNumber);
+            }
+
+            if (invalidSerialCount > 0) {
+                log.warn("Found {} invalid serial numbers out of {} total for order ID: {}",
+                        invalidSerialCount, orderSerialNumbers.size(), orderId);
+            }
+
+            if (validSerialNumbers.isEmpty()) {
+                log.warn("No valid serial numbers found for order ID: {} after filtering", orderId);
+                return;
+            }
+
+            // Group serial numbers by variant ID with error handling
+            Map<Long, List<SerialNumber>> serialsByVariant;
+            try {
+                serialsByVariant = validSerialNumbers.stream()
+                    .collect(Collectors.groupingBy(sn -> sn.getSanPhamChiTiet().getId()));
+
+                log.debug("Grouped {} valid serial numbers into {} variants for order ID: {}",
+                         validSerialNumbers.size(), serialsByVariant.size(), orderId);
+
+            } catch (Exception groupingException) {
+                log.error("Failed to group serial numbers by variant for order ID: {} - Error: {}",
+                         orderId, groupingException.getMessage(), groupingException);
+                return;
+            }
+
+            // Populate serial number information in order line items with enhanced error handling
+            int populatedCount = 0;
+            int skippedCount = 0;
+            int errorCount = 0;
+
+            for (HoaDonChiTietDto chiTiet : hoaDonDto.getChiTiet()) {
+                try {
+                    if (chiTiet == null) {
+                        skippedCount++;
+                        log.warn("Null order line item found for order ID: {}", orderId);
+                        continue;
+                    }
+
+                    if (chiTiet.getSanPhamChiTietId() == null) {
+                        skippedCount++;
+                        log.warn("Order line item missing sanPhamChiTietId for order ID: {}", orderId);
+                        continue;
+                    }
+
+                    List<SerialNumber> variantSerials = serialsByVariant.get(chiTiet.getSanPhamChiTietId());
+
+                    if (variantSerials != null && !variantSerials.isEmpty()) {
+                        // Enhanced serial number selection with validation
+                        SerialNumber selectedSerial = null;
+
+                        for (SerialNumber serialNumber : variantSerials) {
+                            if (serialNumber != null &&
+                                serialNumber.getId() != null &&
+                                serialNumber.getSerialNumberValue() != null &&
+                                !serialNumber.getSerialNumberValue().trim().isEmpty()) {
+                                selectedSerial = serialNumber;
+                                break;
+                            }
+                        }
+
+                        if (selectedSerial != null) {
+                            chiTiet.setSerialNumberId(selectedSerial.getId());
+                            chiTiet.setSerialNumber(selectedSerial.getSerialNumberValue().trim());
+
+                            populatedCount++;
+                            log.debug("Populated serial number {} for variant ID: {} in order ID: {}",
+                                     selectedSerial.getSerialNumberValue(), chiTiet.getSanPhamChiTietId(), orderId);
+
+                            // Log information about multiple serial numbers
+                            if (variantSerials.size() > 1) {
+                                log.debug("Multiple serial numbers ({}) found for variant ID: {} in order ID: {}, using: {}",
+                                         variantSerials.size(), chiTiet.getSanPhamChiTietId(), orderId,
+                                         selectedSerial.getSerialNumberValue());
+                            }
+                        } else {
+                            skippedCount++;
+                            log.warn("No valid serial numbers found for variant ID: {} in order ID: {} - all serial numbers were null or invalid",
+                                    chiTiet.getSanPhamChiTietId(), orderId);
+                        }
+                    } else {
+                        skippedCount++;
+                        log.debug("No serial numbers found for variant ID: {} in order ID: {}",
+                                 chiTiet.getSanPhamChiTietId(), orderId);
+                    }
+
+                } catch (Exception itemException) {
+                    errorCount++;
+                    log.error("Failed to populate serial number for line item with variant ID: {} in order ID: {} - Error: {}",
+                             chiTiet != null ? chiTiet.getSanPhamChiTietId() : "unknown", orderId,
+                             itemException.getMessage(), itemException);
+
+                    // Clear any partially set data for this item
+                    if (chiTiet != null) {
+                        chiTiet.setSerialNumberId(null);
+                        chiTiet.setSerialNumber(null);
+                    }
+                }
+            }
+
+            // Final success logging with performance metrics
+            long executionTime = System.currentTimeMillis() - startTime;
+            log.info("Serial number population completed for order ID: {} - Populated: {}, Skipped: {}, Errors: {}, Total items: {}, Execution time: {}ms",
+                     orderId, populatedCount, skippedCount, errorCount, hoaDonDto.getChiTiet().size(), executionTime);
+
+            // Performance warning for slow population
+            if (executionTime > 2000) {
+                log.warn("Slow serial number population detected for order ID: {} - took {}ms", orderId, executionTime);
+            }
+
+        } catch (Exception e) {
+            // Comprehensive error handling with detailed logging
+            long executionTime = System.currentTimeMillis() - startTime;
+            log.error("Critical failure during serial number population for order ID: {} after {}ms - Error type: {}, Message: {}",
+                     orderId, executionTime, e.getClass().getSimpleName(), e.getMessage(), e);
+
+            // Clear any partially populated serial number data to maintain consistency
+            try {
+                if (hoaDonDto.getChiTiet() != null) {
+                    int clearedCount = 0;
+                    for (HoaDonChiTietDto chiTiet : hoaDonDto.getChiTiet()) {
+                        if (chiTiet != null && (chiTiet.getSerialNumberId() != null || chiTiet.getSerialNumber() != null)) {
+                            chiTiet.setSerialNumberId(null);
+                            chiTiet.setSerialNumber(null);
+                            clearedCount++;
+                        }
+                    }
+
+                    if (clearedCount > 0) {
+                        log.warn("Cleared {} partially populated serial numbers for order ID: {} due to population failure",
+                                clearedCount, orderId);
+                    }
+                }
+            } catch (Exception cleanupException) {
+                log.error("Failed to cleanup partially populated serial numbers for order ID: {} - Error: {}",
+                         orderId, cleanupException.getMessage(), cleanupException);
+            }
+
+            // Log final failure summary
+            log.warn("Serial number population failed for order ID: {} - order processing will continue without serial numbers", orderId);
+        }
+    }
+
+    /**
+     * Enhanced toDto method that includes payment method and serial number population.
+     * This replaces direct mapper calls to ensure both payment method and serial number
+     * information are always populated in the DTO.
+     *
+     * @param hoaDon The order entity to convert to DTO
+     * @return HoaDonDto with populated payment method and serial number information
      */
     private HoaDonDto toDtoWithPaymentMethod(HoaDon hoaDon) {
-        HoaDonDto dto = hoaDonMapper.toDto(hoaDon);
-        populatePaymentMethod(dto);
-        return dto;
+        long startTime = System.currentTimeMillis();
+
+        try {
+            HoaDonDto dto = hoaDonMapper.toDto(hoaDon);
+
+            // Populate payment method information
+            populatePaymentMethod(dto);
+            log.debug("Payment method populated for order ID: {}", dto.getId());
+
+            // Populate serial number information for order line items
+            populateSerialNumbers(dto);
+            log.debug("Serial number population completed for order ID: {}", dto.getId());
+
+            long executionTime = System.currentTimeMillis() - startTime;
+            log.debug("Order DTO population completed for order ID: {} in {}ms", dto.getId(), executionTime);
+
+            return dto;
+
+        } catch (Exception e) {
+            long executionTime = System.currentTimeMillis() - startTime;
+            log.error("Failed to populate order DTO for order ID: {} after {}ms - Error: {}",
+                     hoaDon.getId(), executionTime, e.getMessage(), e);
+
+            // Return basic DTO without enhancements to ensure order retrieval doesn't fail
+            // This provides graceful degradation when population methods fail
+            HoaDonDto basicDto = hoaDonMapper.toDto(hoaDon);
+            log.warn("Returning basic DTO without payment method and serial number population for order ID: {}",
+                     basicDto.getId());
+            return basicDto;
+        }
     }
 
     /**

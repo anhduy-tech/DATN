@@ -750,15 +750,17 @@ export const useOrderStore = defineStore('order', () => {
     }
   }
 
-  const fetchOrderById = async (id) => {
+  const fetchOrderById = async (id, forceRefresh = false) => {
     const endMeasure = measurePerformance('fetchOrderById')
 
-    // Check normalized state first
-    const existingOrder = getOrderById(id)
-    if (existingOrder) {
-      currentOrder.value = existingOrder
-      endMeasure()
-      return existingOrder
+    // Check normalized state first (bypass if forceRefresh)
+    if (!forceRefresh) {
+      const existingOrder = getOrderById(id)
+      if (existingOrder) {
+        currentOrder.value = existingOrder
+        endMeasure()
+        return existingOrder
+      }
     }
 
     // No cache - rely on normalized state and real-time updates

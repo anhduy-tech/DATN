@@ -145,7 +145,7 @@ export const mapTabToHoaDonDto = (tab, options = {}) => {
     tongThanhToan: tongThanhToan,
 
     // Status information
-    trangThaiDonHang: tab.giaohang ? 'CHO_GIAO_HANG' : 'HOAN_THANH',
+    trangThaiDonHang: tab.giaohang ? 'CHO_XAC_NHAN' : 'HOAN_THANH',
     // Payment status depends on payment method - unified logic for all scenarios
     trangThaiThanhToan: (tab.phuongThucThanhToan === 'VNPAY' ||
                         tab.phuongThucThanhToan === 'MOMO' ||
@@ -187,8 +187,134 @@ export const mapTabToHoaDonDto = (tab, options = {}) => {
 }
 
 /**
+ * Maps frontend order data to backend HoaDonDto structure for ORDER UPDATES.
+ * This function preserves existing order status and is specifically designed for updating existing orders.
+ *
+ * CRITICAL ENHANCEMENT: Includes item classification to distinguish between existing and new items.
+ * This prevents the backend from attempting to reserve serial numbers that are already SOLD/committed.
+ *
+ * Item Classification Logic:
+ * - Items WITH ID: Existing items already committed to the order (should NOT be re-reserved)
+ * - Items WITHOUT ID: New items being added to the order (REQUIRE reservation processing)
+ *
+ * This classification enables the backend to:
+ * 1. Skip reservation attempts for existing SOLD serial numbers
+ * 2. Only reserve truly new items that need inventory allocation
+ * 3. Prevent 500 errors during order updates
+ * 4. Maintain inventory integrity across order modifications
+ *
+ * @param {Object} order - The existing order data from frontend
+ * @param {Object} options - Optional parameters for mapping
+ * @param {Object} options.addressData - Delivery address data
+ * @param {Object} options.recipientInfo - Recipient information
+ * @param {number} options.consolidatedShippingFee - Calculated shipping fee
+ * @param {number} options.dynamicOrderTotal - Calculated order total
+ * @param {Object} options.validationFunctions - Custom validation functions
+ * @param {Function} options.updateCurrentOrderData - Function to update order data
+ * @param {string} options.source - Source identifier for debug logging
+ * @returns {Object} HoaDonDto structure for backend API (for updates) with item classification
+ * @throws {Error} If required data is missing or invalid
+ */
+export const mapOrderToUpdateDto = (order, options = {}) => {
+  // Destructure options with defaults
+  const {
+    addressData = null,
+    recipientInfo = null,
+    consolidatedShippingFee = 0,
+    dynamicOrderTotal = null,
+    validationFunctions = {},
+    updateCurrentOrderData = null,
+    source = 'unknown'
+  } = options
+
+  // Merge validation functions with defaults
+  const validators = {
+    ...defaultValidationFunctions,
+    ...validationFunctions
+  }
+
+  // Validate required order data
+  if (!order) {
+    throw new Error('Order data is required for update mapping')
+  }
+
+  // Use the same logic as mapTabToHoaDonDto but preserve existing order status
+  const dto = mapTabToHoaDonDto(order, options)
+
+  // CRITICAL: Preserve existing order status for updates
+  // Do not change the order status during updates unless explicitly requested
+  dto.trangThaiDonHang = order.trangThaiDonHang || dto.trangThaiDonHang
+
+  // Also preserve existing payment status if order is already paid
+  if (order.trangThaiThanhToan === 'DA_THANH_TOAN') {
+    dto.trangThaiThanhToan = order.trangThaiThanhToan
+  }
+
+  // ENHANCEMENT: Add item classification for better backend processing
+  // Override the chiTiet mapping to include item classification information
+  let newItemsCount = 0
+  let existingItemsCount = 0
+
+  dto.chiTiet = order.sanPhamList.map((item, index) => {
+    // Determine if this is a new item based on presence of ID
+    // Items without ID are considered new and require reservation processing
+    // Items with ID are existing items that should not be re-reserved
+    const isNewItem = !item.id
+
+    if (isNewItem) {
+      newItemsCount++
+    } else {
+      existingItemsCount++
+    }
+
+    const chiTietItem = {
+      // Preserve existing item ID if present (for existing items)
+      ...(item.id && { id: item.id }),
+
+      // Standard item mapping
+      sanPhamChiTietId: item.sanPhamChiTiet?.id || item.sanPham?.id,
+      soLuong: item.soLuong,
+      donGia: item.donGia,
+      giaBan: item.donGia, // Support both field names for compatibility
+      thanhTien: item.donGia * item.soLuong,
+
+      // Serial number validation using provided or default validators
+      serialNumberId: validators.validateSerialNumberId(item.sanPhamChiTiet?.serialNumberId),
+      serialNumber: validators.validateSerialNumber(item.sanPhamChiTiet?.serialNumber),
+
+      // CRITICAL ENHANCEMENT: Item classification for backend processing
+      isNewItem: isNewItem, // Flag to indicate if this item requires reservation processing
+      originalOrderId: order.id, // Reference to the order being updated for context
+
+      // Additional metadata for debugging and audit trail
+      itemIndex: index, // Position in the order for reference
+      mappingSource: source // Source of the mapping for debugging
+    }
+
+    return chiTietItem
+  })
+
+  // Add summary information for backend processing
+  dto.itemClassificationSummary = {
+    totalItems: order.sanPhamList.length,
+    newItems: newItemsCount,
+    existingItems: existingItemsCount,
+    originalOrderId: order.id
+  }
+
+  // Enhanced debug logging with item classification details
+  console.log(`OrderUpdateMapping [${source}] - Preserving order status:`, order.trangThaiDonHang)
+  console.log(`OrderUpdateMapping [${source}] - Preserving payment status:`, order.trangThaiThanhToan)
+  console.log(`OrderUpdateMapping [${source}] - Item classification: ${newItemsCount} new, ${existingItemsCount} existing`)
+  console.log(`OrderUpdateMapping [${source}] - Generated Update DTO:`, dto)
+
+  return dto
+}
+
+/**
  * Export default object for compatibility
  */
 export default {
-  mapTabToHoaDonDto
+  mapTabToHoaDonDto,
+  mapOrderToUpdateDto
 }
