@@ -1,4 +1,3 @@
-```vue
 <template>
   <div class="chat-page flex flex-col min-h-[calc(100vh-160px)]">
     <div class="flex flex-col lg:flex-row gap-4 flex-1">
@@ -72,7 +71,8 @@
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import { connectWebSocket, disconnectWebSocket, sendPublicMessage, sendJoinNotification, getActiveSessions, isWebSocketConnected } from '@/apis/chat'
 
-const username = ref('Hỗ trợ viên') // Tên người dùng cố định
+// Lấy username từ localStorage, mặc định là "Hỗ trợ viên" nếu không có
+const username = ref(JSON.parse(localStorage.getItem('nguoiDung') || '{}')?.hoTen || 'Hỗ trợ viên')
 const sessionId = ref('') // sessionId của phòng hiện tại
 const publicMessage = ref('')
 const messagesByRoom = ref({}) // Lưu tin nhắn theo sessionId
@@ -159,12 +159,24 @@ const connectToRoom = async (selectedSessionId) => {
     (message) => {
       console.log(`Người mới tham gia: ${message.username} đã tham gia phòng ${message.sessionId}`)
     },
-    () => {
+    async () => {
       isConnected.value = true
       console.log('Kết nối WebSocket thành công')
-      sendJoinNotification(sessionId.value, username.value).catch((error) => {
-        console.error(`Lỗi gửi thông báo tham gia: ${error.message}`)
-      })
+      try {
+        // Gửi thông báo tham gia
+        await sendJoinNotification(sessionId.value, username.value)
+        // Gửi ba tin nhắn chào tự động
+        const greetingMessages = [
+          'Xin chào Quý khách!',
+          'Cảm ơn Quý khách đã sử dụng dịch vụ của Lapxpert.',
+          'Chúng tôi có thể hỗ trợ gì cho Quý khách hôm nay?'
+        ]
+        for (const message of greetingMessages) {
+          await sendPublicMessage(sessionId.value, username.value, message)
+        }
+      } catch (error) {
+        console.error(`Lỗi gửi thông báo hoặc tin nhắn chào: ${error.message}`)
+      }
     },
     (error) => {
       isConnected.value = false
@@ -219,4 +231,3 @@ onUnmounted(() => {
   vertical-align: middle;
 }
 </style>
-```

@@ -100,11 +100,11 @@ public class WebSocketServiceConfig implements WebSocketMessageBrokerConfigurer 
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // Register native WebSocket endpoint - NO AUTHENTICATION REQUIRED
         registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns("http://localhost:*"); // Allow all localhost ports for development
+                .setAllowedOriginPatterns("*"); // Sửa lỗi tại đây: Cho phép kết nối từ mọi nguồn gốc
 
         // Also register SockJS fallback endpoint
         registry.addEndpoint("/ws-sockjs")
-                .setAllowedOriginPatterns("http://localhost:*")
+                .setAllowedOriginPatterns("*") // Sửa lỗi tại đây
                 .withSockJS();
 
         log.info("WebSocket STOMP endpoints registered: /ws (native) and /ws-sockjs (SockJS) - public access");

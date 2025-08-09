@@ -5,8 +5,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import com.lapxpert.backend.nguoidung.exception.DuplicateUserException;
 
+import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -23,11 +27,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<Map<String, Object>> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException e) {
         log.warn("Global file upload size exceeded: {}", e.getMessage());
-        
+
         // Extract the actual limits from the exception if possible
         String maxFileSize = "50MB";
         String maxRequestSize = "50MB";
-        
+
         // Try to extract actual limits from exception message
         if (e.getMessage() != null) {
             if (e.getMessage().contains("maximum allowed size")) {
@@ -35,19 +39,17 @@ public class GlobalExceptionHandler {
                 log.debug("Exception details: {}", e.getMessage());
             }
         }
-        
+
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
-            .body(Map.of(
-                "error", "FILE_SIZE_EXCEEDED",
-                "message", "File size exceeds maximum allowed limit",
-                "details", String.format(
-                    "Maximum allowed size is %s per file and %s per request", 
-                    maxFileSize, maxRequestSize
-                ),
-                "maxFileSize", maxFileSize,
-                "maxRequestSize", maxRequestSize,
-                "timestamp", System.currentTimeMillis()
-            ));
+                .body(Map.of(
+                        "error", "FILE_SIZE_EXCEEDED",
+                        "message", "File size exceeds maximum allowed limit",
+                        "details", String.format(
+                                "Maximum allowed size is %s per file and %s per request",
+                                maxFileSize, maxRequestSize),
+                        "maxFileSize", maxFileSize,
+                        "maxRequestSize", maxRequestSize,
+                        "timestamp", System.currentTimeMillis()));
     }
 
     /**
@@ -57,13 +59,24 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleMultipartException(
             org.springframework.web.multipart.MultipartException e) {
         log.error("Multipart file upload error: {}", e.getMessage());
-        
+
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-            .body(Map.of(
-                "error", "MULTIPART_ERROR",
-                "message", "Error processing multipart file upload",
-                "details", e.getMessage(),
-                "timestamp", System.currentTimeMillis()
-            ));
+                .body(Map.of(
+                        "error", "MULTIPART_ERROR",
+                        "message", "Error processing multipart file upload",
+                        "details", e.getMessage(),
+                        "timestamp", System.currentTimeMillis()));
+    }
+
+    @ExceptionHandler(DuplicateUserException.class)
+    public ResponseEntity<Map<String, Object>> handleDuplicateUserException(DuplicateUserException ex,
+            WebRequest request) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.CONFLICT.value());
+        body.put("error", "Conflict");
+        body.put("message", ex.getMessage());
+        body.put("path", request.getDescription(false).replace("uri=", ""));
+        return new ResponseEntity<>(body, HttpStatus.CONFLICT);
     }
 }
