@@ -1,0 +1,37 @@
+# LapXpert AI Chat Dependencies
+# Core dependencies for Vietnamese embedding model and GitHub AI Mistral Medium 3 (25.05) integration
+
+# Database connectivity
+psycopg2-binary
+
+# Vietnamese text processing and embeddings
+sentence-transformers
+pyvi
+
+# FastAPI and web framework
+fastapi
+uvicorn[standard]
+
+# AI Inference SDKs
+azure-ai-inference # GitHub AI (Mistral Medium 3) integration
+
+# HTTP client for async operations (required by azure-ai-inference)
+aiohttp
+
+# Async database support
+asyncpg
+
+# Vector database support
+pgvector
+
+# Utilities
+tqdm
+numpy
+torch
+
+# Development and testing
+pytest
+httpx
+
+# For loading environment variables from .env files
+python-dotenv
