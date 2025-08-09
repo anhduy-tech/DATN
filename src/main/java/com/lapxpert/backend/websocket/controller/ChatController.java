@@ -1,26 +1,18 @@
 package com.lapxpert.backend.websocket.controller;
 
-import com.lapxpert.backend.websocket.service.ActiveSessionService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Set;
-
 @RestController
 @RequestMapping("/api/chat")
 public class ChatController {
     private final SimpMessagingTemplate messagingTemplate;
-    private final ActiveSessionService activeSessionService;
 
-    @Autowired
-    public ChatController(SimpMessagingTemplate messagingTemplate, ActiveSessionService activeSessionService) {
+    public ChatController(SimpMessagingTemplate messagingTemplate) {
         this.messagingTemplate = messagingTemplate;
-        this.activeSessionService = activeSessionService;
     }
 
     @PostMapping("/public")
@@ -37,14 +29,7 @@ public class ChatController {
 
     @PostMapping("/join")
     public void sendJoinNotification(@RequestBody JoinMessage message) {
-        activeSessionService.addSession(message.getSessionId());
         messagingTemplate.convertAndSend("/topic/join/" + message.getSessionId(), message);
-    }
-
-    // Thêm API lấy danh sách sessionId đang hoạt động
-    @GetMapping("/active-sessions")
-    public Set<String> getActiveSessions() {
-        return activeSessionService.getActiveSessions();
     }
 }
 

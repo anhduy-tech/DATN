@@ -5768,20 +5768,29 @@ onUnmounted(() => {
 })
 
 const sendPosUpdateAction = async () => {
+  if (!activeTab.value || !activeTab.value.sanPhamList?.length) {
+    return; // Không gửi nếu không có tab hoặc sanPhamList rỗng
+  }
 
   try {
     await sendPosUpdate({
       action: 'UPDATE_CART',
       orderId: activeTab.value.id,
-      data: activeTab.value,
+      products: activeTab.value.sanPhamList,
       timestamp: Date.now(),
     });
     logger.debug('Đã gửi cập nhật POS: UPDATE_CART', {
       orderId: activeTab.value.id,
-      data: activeTab.value,
+      products: activeTab.value.sanPhamList,
     });
   } catch (error) {
     logger.critical('Lỗi khi gửi cập nhật POS: UPDATE_CART', { error });
+    toast.add({
+      severity: 'error',
+      summary: 'Lỗi cập nhật POS',
+      detail: 'Không thể gửi cập nhật giỏ hàng đến POS.',
+      life: 3000,
+    });
   }
 };
 
@@ -5801,7 +5810,7 @@ onMounted(() => {
           logger.debug('Cập nhật giá sản phẩm:', {
             productId: msg.productId,
             newPrice: msg.newPrice,
-          });
+          }); 
         }
       } else if (msg.action === 'STOCK_UPDATE') {
         logger.debug('Nhận cập nhật tồn kho:', msg);

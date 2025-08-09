@@ -1,5 +1,14 @@
 <template>
   <div class="ai-chat-interface">
+    <!-- Simplified Header -->
+    <div class="chat-header">
+      <div class="header-content">
+        <div class="chat-title">
+          <i class="pi pi-comments text-2xl mr-2"></i>
+          <h2 class="text-xl font-semibold">Trợ Lý AI LapXpert</h2>
+        </div>
+      </div>
+    </div>
 
     <!-- Khu vực chat messages -->
     <div class="chat-messages" ref="messagesContainer">
@@ -309,7 +318,9 @@ onMounted(async () => {
   height: 100vh;
   max-height: 800px;
   background: #f8f9fa;
+  border-radius: 12px;
   overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
 }
 
 .chat-header {

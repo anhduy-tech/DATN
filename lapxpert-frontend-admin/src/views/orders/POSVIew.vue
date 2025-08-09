@@ -15,10 +15,10 @@
         <div class="max-h-[70vh] overflow-y-auto p-4" ref="updatesContainer">
           <div v-if="latestUpdate.products?.length" class="space-y-4">
             <div v-for="(item, index) in latestUpdate.products" :key="item.sanPhamChiTiet.id"
-              class="flex items-center gap-4 p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-all duration-300 border border-gray-100">
+                 class="flex items-center gap-4 p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-all duration-300 border border-gray-100">
               <img :src="item.sanPhamChiTiet.hinhAnh?.[0] || '/placeholder-product.png'"
-                :alt="item.sanPhamChiTiet.tenSanPham"
-                class="w-16 h-16 object-cover rounded-lg border border-gray-200" />
+                   :alt="item.sanPhamChiTiet.tenSanPham"
+                   class="w-16 h-16 object-cover rounded-lg border border-gray-200" />
               <div class="flex-1 min-w-0">
                 <div class="font-semibold text-base text-gray-800 truncate">{{ item.sanPhamChiTiet.tenSanPham }}</div>
                 <div class="text-sm text-gray-500">{{ item.sanPhamChiTiet.sku }}</div>
@@ -35,8 +35,7 @@
                 </div>
                 <div class="text-right">
                   <div v-if="item.sanPhamChiTiet.giaKhuyenMai" class="space-y-1">
-                    <div class="text-sm text-gray-500 line-through">{{ formatCurrency(item.sanPhamChiTiet.giaBan *
-                      item.soLuong) }}</div>
+                    <div class="text-sm text-gray-500 line-through">{{ formatCurrency(item.sanPhamChiTiet.giaBan * item.soLuong) }}</div>
                     <div class="text-lg font-semibold text-red-600 flex items-center gap-1">
                       {{ formatCurrency(item.sanPhamChiTiet.giaKhuyenMai * item.soLuong) }}
                       <span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">Giảm giá</span>
@@ -64,12 +63,14 @@
 
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue';
+import { useToast } from 'primevue/usetoast';
 import { connectPosWebSocket } from '@/apis/posView';
 import Card from 'primevue/card';
 import Toast from 'primevue/toast';
 import Divider from 'primevue/divider';
 
 // Khởi tạo
+const toast = useToast();
 const latestUpdate = ref({ orderId: null, products: [], timestamp: null });
 const updatesContainer = ref(null);
 
@@ -112,18 +113,40 @@ onMounted(() => {
           if (product) {
             product.donGia = msg.newPrice;
             product.thanhTien = msg.newPrice * product.soLuong;
-            console.info(`Cập nhật giá: Giá sản phẩm ${product.sanPhamChiTiet.tenSanPham} đã được cập nhật.`);
+            toast.add({
+              severity: 'info',
+              summary: 'Cập nhật giá',
+              detail: `Giá sản phẩm ${product.sanPhamChiTiet.tenSanPham} đã được cập nhật.`,
+              life: 3000,
+            });
           }
         }
       } else if (msg.action === 'STOCK_UPDATE') {
-        console.warn(`Cập nhật tồn kho: Sản phẩm ${msg.productId} có tồn kho mới: ${msg.stock}`);
+        toast.add({
+          severity: 'warn',
+          summary: 'Cập nhật tồn kho',
+          detail: `Sản phẩm ${msg.productId} có tồn kho mới: ${msg.stock}`,
+          life: 3000,
+        });
       }
     },
     () => {
-      console.error('Đã kết nối POS thời gian thực.');
+
+      toast.add({
+        severity: 'success',
+        summary: 'Kết nối POS',
+        detail: 'Đã kết nối POS thời gian thực.',
+        life: 3000,
+      });
     },
     (error) => {
-      console.error('Lỗi kết nối POS:', error);
+
+      toast.add({
+        severity: 'error',
+        summary: 'Lỗi kết nối POS',
+        detail: error,
+        life: 5000,
+      });
     }
   );
 });

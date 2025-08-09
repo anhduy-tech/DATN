@@ -1,5 +1,6 @@
 package com.lapxpert.backend.hoadon.repository;
 
+import com.lapxpert.backend.giaoca.dto.SanPhamBanDTO;
 import com.lapxpert.backend.hoadon.entity.HoaDonChiTiet;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -84,4 +85,5 @@ public interface HoaDonChiTietRepository extends JpaRepository<HoaDonChiTiet, Lo
     List<Object[]> findTopSellingCategories(@Param("tuNgay") Instant tuNgay,
                                            @Param("denNgay") Instant denNgay,
                                            Pageable pageable);
+    
 }

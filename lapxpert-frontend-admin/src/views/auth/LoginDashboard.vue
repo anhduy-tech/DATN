@@ -28,7 +28,7 @@ onMounted(() => {
 
   // Check if user is already authenticated
   if (AuthService.isAuthenticated()) {
-    router.push('/')
+    router.push('/start-shift')
   }
 })
 
@@ -85,7 +85,7 @@ const handleLogin = async () => {
     url.searchParams.delete('expired')
     window.history.replaceState({}, '', url)
 
-    router.push('/')
+    router.push('/start-shift')
   } catch (error) {
     console.error('Login error:', error)
     console.error('Error response:', error.response)

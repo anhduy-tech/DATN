@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { privateApi } from './axiosAPI';
 
-const VIETNAM_ADDRESS_API = 'https://provinces.open-api.vn/api/v1/';
+const VIETNAM_ADDRESS_API = 'https://provinces.open-api.vn/api/';
 const GHN_ADDRESS_API = '/shipping/ghn';
 
 export default {

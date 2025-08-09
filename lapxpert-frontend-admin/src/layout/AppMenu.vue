@@ -8,7 +8,11 @@ const role = localStorage.getItem('vaiTro')
 // Mẫu menu cho Admin
 const adminModel = ref([
   {
-    items: [{ label: 'Thống kê', icon: 'icon-[line-md--speed-loop] size-5', to: '/' }],
+    items: [
+      { label: 'Bán hàng', icon: 'icon-[line-md--speed-loop] size-5', to: '/' },
+      { label: 'Tổng doanh thu', icon: 'icon-[fluent-mdl2--money] size-5', to: '/revenue' },
+      { label: 'Lịch làm việc', icon: 'icon-[fluent-mdl2--calendar] size-5', to: '/work-schedule' },
+    ],
   },
   {
     label: 'Quản lý đơn hàng',

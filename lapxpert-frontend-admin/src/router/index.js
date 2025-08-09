@@ -12,6 +12,12 @@ const router = createRouter({
       meta: { public: true },
     },
     {
+      path: '/start-shift',
+      name: 'newShift',
+      component: () => import('@/views/StartShift.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/',
       component: AppLayout,
       meta: { requiresAuth: true },
@@ -20,6 +26,16 @@ const router = createRouter({
           path: '/',
           name: 'dashboard',
           component: () => import('@/views/Dashboard.vue'),
+        },
+        {
+          path: '/revenue',
+          name: 'revenue',
+          component: () => import('@/views/thongke/DoanhThu.vue'),
+        },
+        {
+          path: '/work-schedule',
+          name: 'work-schedule',
+          component: () => import('@/views/thongke/LichLamViec.vue'),
         },
         {
           path: '/discounts',
