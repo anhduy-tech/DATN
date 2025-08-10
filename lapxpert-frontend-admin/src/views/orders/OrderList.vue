@@ -525,6 +525,23 @@
             {{ formatDateTime(data.ngayCapNhat) }}
           </template>
         </Column>
+        <Column
+          field="trangThaiCongNo"
+          header="Trạng thái công nợ"
+          sortable
+          headerClass="!text-md"
+          class="!text-sm"
+        >
+          <template #body="{ data }">
+            <div class="flex items-center gap-2">
+              <Tag
+                :value="orderStore.getPaymentStatusInfo(data.trangThaiCongNo).label"
+                :severity="orderStore.getPaymentStatusInfo(data.trangThaiCongNo).severity"
+              />
+            </div>
+          </template>
+        </Column>
+
 
         <Column header="Hành động" headerClass="!text-md" class="!text-sm" style="width: 150px">
           <template #body="{ data }">
@@ -963,11 +980,16 @@ const canCancelOrder = (order) => {
 
 // Conditional button visibility methods
 const shouldShowEditButton = (order) => {
-  if (order.trangThaiDonHang === 'CHO_XAC_NHAN') {
-    return true
+  // Hide edit button when payment status is DA_THANH_TOAN (Paid)
+  if (order.trangThaiThanhToan === 'DA_THANH_TOAN') {
+    return false
+  }
+
+  if (order.trangThaiDonHang === 'DA_HUY' || order.trangThaiDonHang === 'HOAN_THANH') {
+    return false
   }
   // Show edit button only when order status is CHO_XAC_NHAN (Pending Confirmation)
-  return false
+  return true
 }
 
 const shouldShowDeleteButton = (order) => {

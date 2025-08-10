@@ -63,7 +63,21 @@ public class HoaDonController {
         HoaDonDto updatedHoaDonDto = hoaDonService.updateHoaDon(id, hoaDonDto, currentUser);
         return ResponseEntity.ok(updatedHoaDonDto);
     }
-
+    @PutMapping("/{id}/refund")
+    public ResponseEntity<?> refundHoaDon(
+            @PathVariable Long id
+    ) {
+        hoaDonService.refundCongNo(id);
+        return ResponseEntity.ok("Cập nhật trạng thái hoàn tiền thành công.");
+    }
+    @PutMapping("/{id}/update-cong-no")
+    public ResponseEntity<?> updateCongNo(
+            @PathVariable Long id,
+            @RequestParam(value = "trangThaiCongNo", required = false) String trangThaiCongNo
+    ) {
+        hoaDonService.updateCongNo(id, trangThaiCongNo);
+        return ResponseEntity.ok("Cập nhật trạng thái công nợ thành công.");
+    }
     // Endpoint to get orders for the authenticated user - NEW
     @GetMapping("/me")
     public ResponseEntity<List<HoaDonDto>> getMyOrders(@AuthenticationPrincipal NguoiDung currentUser) {

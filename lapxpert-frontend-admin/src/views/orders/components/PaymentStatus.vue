@@ -76,6 +76,9 @@
               {{ paymentMethodInfo.label }}
             </div>
           </div>
+
+
+
         </div>
 
         <!-- Transaction ID -->
@@ -122,7 +125,7 @@
           @click="confirmPayment"
         />
 
-        <!-- Process Refund
+        <!-- Process Refund -->
         <Button
           v-if="canProcessRefund"
           label="Hoàn tiền"
@@ -131,17 +134,17 @@
           outlined
           :loading="processing"
           @click="processRefund"
-        /> -->
+        />
 
         <!-- Update Status -->
-        <!-- <Button
+        <Button
           v-if="canUpdateStatus"
-          label="Cập nhật trạng thái"
+          label="Cập nhật trạng thái công nợ"
           icon="pi pi-refresh"
           severity="secondary"
           outlined
           @click="showUpdateDialog = true"
-        /> -->
+        />
 
         <!-- View Receipt -->
         <Button
@@ -198,7 +201,7 @@
     <Dialog
       v-model:visible="showUpdateDialog"
       modal
-      header="Cập nhật trạng thái thanh toán"
+      header="Cập nhật trạng thái công nợ"
       class="w-full max-w-md"
     >
       <div class="space-y-4">
@@ -248,6 +251,9 @@ import { ref, computed } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { format } from 'date-fns'
 import { vi } from 'date-fns/locale'
+
+
+
 
 // Props
 const props = defineProps({
@@ -410,10 +416,11 @@ const canViewReceipt = computed(() => {
 
 const availableStatuses = computed(() => {
   return [
-    { label: 'Chưa thanh toán', value: 'CHUA_THANH_TOAN' },
-    { label: 'Đã thanh toán', value: 'DA_THANH_TOAN' },
-    { label: 'Thanh toán một phần', value: 'THANH_TOAN_MOT_PHAN' },
-    { label: 'Hoàn tiền', value: 'HOAN_TIEN' }
+    { label: 'Phụ phí', value: 'PHU_PHI' },
+    { label: 'Đã thu phụ phí', value: 'DA_THU_PHU_PHI' },
+    { label: 'Hoàn phí', value: 'HOAN_PHI' },
+    { label: 'Đã hoàn phí', value: 'DA_HOAN_PHI' },
+    { label: 'Hoàn thành  ', value: 'HOAN_THANH' }
   ]
 })
 

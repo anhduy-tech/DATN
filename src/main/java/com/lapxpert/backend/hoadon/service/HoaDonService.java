@@ -12,19 +12,18 @@ import com.lapxpert.backend.hoadon.entity.HoaDon;
 import com.lapxpert.backend.hoadon.entity.HoaDonAuditHistory;
 import com.lapxpert.backend.common.event.OrderChangeEvent;
 import com.lapxpert.backend.hoadon.entity.HoaDonChiTiet;
-import com.lapxpert.backend.hoadon.entity.HoaDonPhieuGiamGia;
 import com.lapxpert.backend.hoadon.entity.HoaDonThanhToan;
 import com.lapxpert.backend.hoadon.entity.HoaDonThanhToanId;
 import com.lapxpert.backend.hoadon.entity.ThanhToan;
 import com.lapxpert.backend.hoadon.mapper.HoaDonMapper;
 import com.lapxpert.backend.hoadon.repository.HoaDonRepository;
 import com.lapxpert.backend.hoadon.repository.HoaDonAuditHistoryRepository;
-import com.lapxpert.backend.hoadon.repository.HoaDonPhieuGiamGiaRepository;
 import com.lapxpert.backend.hoadon.repository.HoaDonThanhToanRepository;
 import com.lapxpert.backend.hoadon.repository.ThanhToanRepository;
 import com.lapxpert.backend.hoadon.enums.LoaiHoaDon;
 import com.lapxpert.backend.hoadon.enums.PhuongThucThanhToan;
 import com.lapxpert.backend.hoadon.enums.TrangThaiDonHang;
+import com.lapxpert.backend.hoadon.enums.TrangThaiCongNo;
 import com.lapxpert.backend.hoadon.enums.TrangThaiThanhToan;
 import com.lapxpert.backend.hoadon.enums.TrangThaiGiaoDich;
 import com.lapxpert.backend.nguoidung.entity.NguoiDung;
@@ -37,8 +36,6 @@ import com.lapxpert.backend.sanpham.entity.sanpham.SanPhamChiTiet;
 import com.lapxpert.backend.sanpham.repository.SanPhamChiTietRepository;
 import com.lapxpert.backend.sanpham.service.SerialNumberService;
 import com.lapxpert.backend.sanpham.service.PricingService;
-import com.lapxpert.backend.phieugiamgia.entity.PhieuGiamGia;
-import com.lapxpert.backend.phieugiamgia.repository.PhieuGiamGiaRepository;
 import com.lapxpert.backend.phieugiamgia.service.PhieuGiamGiaService;
 
 import com.lapxpert.backend.shipping.service.ShippingCalculatorService;
@@ -62,7 +59,6 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.stream.Collectors;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -77,7 +73,6 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
 
     private final HoaDonRepository hoaDonRepository;
     private final HoaDonAuditHistoryRepository auditHistoryRepository;
-    private final HoaDonPhieuGiamGiaRepository hoaDonPhieuGiamGiaRepository;
     private final HoaDonThanhToanRepository hoaDonThanhToanRepository;
     private final ThanhToanRepository thanhToanRepository;
     private final HoaDonMapper hoaDonMapper;
@@ -87,7 +82,6 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
     private final SerialNumberService serialNumberService;
     private final PricingService pricingService;
     private final PhieuGiamGiaService phieuGiamGiaService;
-    private final PhieuGiamGiaRepository phieuGiamGiaRepository;
     private final KiemTraTrangThaiHoaDonService kiemTraTrangThaiService;
     private final MoMoService moMoGatewayService;
     private final PaymentValidationService paymentParameterValidationService;
@@ -157,12 +151,26 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
             BigDecimal shippingFee = calculateShippingFee(hoaDon, hoaDonDto);
             hoaDon.setPhiVanChuyen(shippingFee);
             hoaDon.setGiaTriGiamGiaVoucher(totalVoucherDiscount);
-
             BigDecimal tongCong = tongTienHang.add(hoaDon.getPhiVanChuyen()).subtract(totalVoucherDiscount);
             hoaDon.setTongThanhToan(tongCong.max(BigDecimal.ZERO));
 
             // Step 7: Set order status
             setOrderStatus(hoaDon, hoaDonDto);
+
+            // Step 7.1: Cập nhật trạng thái công nợ
+            hoaDon.setTrangThaiCongNo(TrangThaiCongNo.HOAN_THANH.name()); // enum HOAN_THANH
+//            if (hoaDon.getTrangThaiThanhToan().equals(TrangThaiThanhToan.DA_THANH_TOAN)) {
+//                hoaDon.setTrangThaiCongNo(TrangThaiCongNo.HOAN_THANH.name()); // enum HOAN_THANH
+//            } else if (hoaDon.getTrangThaiThanhToan().equals(TrangThaiThanhToan.CHO_XU_LY_HOAN_TIEN)) {
+//                hoaDon.setTrangThaiCongNo(TrangThaiCongNo.HOAN_PHI.name()); // cần enum TrangThaiCongNo với giá trị KHACH_NO
+//            } else if (hoaDon.getTrangThaiThanhToan().equals(TrangThaiThanhToan.DA_HOAN_TIEN)) {
+//                hoaDon.setTrangThaiCongNo(TrangThaiCongNo.DA_HOAN_PHI.name()); // cần enum TrangThaiCongNo với giá trị KHACH_NO
+//            }  else if (hoaDon.getTrangThaiThanhToan().equals(TrangThaiThanhToan.THANH_TOAN_MOT_PHAN)) {
+//                hoaDon.setTrangThaiCongNo(TrangThaiCongNo.PHU_PHI.name()); // cần enum TrangThaiCongNo với giá trị KHACH_NO
+//            }
+//            else {
+//                hoaDon.setTrangThaiCongNo(TrangThaiCongNo.DA_THU_PHU_PHI.name()); // enum SHOP_NO
+//            }
 
             // Step 8: Save order with optimistic locking retry
             HoaDon savedHoaDon = optimisticLockingService.executeWithRetryAndConstraintHandling(
@@ -497,159 +505,6 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
         }
 
         return totalDiscount;
-    }
-
-    /**
-     * Process voucher updates for an order during order modification.
-     * Compares current and new voucher lists to determine changes and applies them.
-     *
-     * @param order The order being updated
-     * @param newVoucherCodes List of voucher codes that should be applied to the order
-     */
-    @Transactional
-    private void processVoucherUpdatesForOrder(HoaDon order, List<String> newVoucherCodes) {
-        try {
-            log.info("Processing voucher updates for order {}", order.getId());
-
-            // 1. Get current applied vouchers
-            List<String> currentVoucherCodes = getCurrentAppliedVoucherCodes(order.getId());
-            log.debug("Current vouchers for order {}: {}", order.getId(), currentVoucherCodes);
-            log.debug("New vouchers for order {}: {}", order.getId(), newVoucherCodes);
-
-            // 2. Compare and identify changes
-            List<String> vouchersToRemove = findVouchersToRemove(currentVoucherCodes, newVoucherCodes);
-            List<String> vouchersToAdd = findVouchersToAdd(currentVoucherCodes, newVoucherCodes);
-
-            log.info("Voucher changes for order {}: {} to remove, {} to add",
-                    order.getId(), vouchersToRemove.size(), vouchersToAdd.size());
-
-            // 3. Remove old voucher relationships and restore usage counts
-            if (!vouchersToRemove.isEmpty()) {
-                removeVouchersFromOrder(order.getId(), vouchersToRemove);
-                log.info("Removed {} vouchers from order {}", vouchersToRemove.size(), order.getId());
-            }
-
-            // 4. Apply new vouchers if any
-            if (!vouchersToAdd.isEmpty()) {
-                // Create a temporary DTO with only the new vouchers for processing
-                HoaDonDto tempDto = new HoaDonDto();
-                tempDto.setVoucherCodes(vouchersToAdd);
-
-                // Use existing method to apply new vouchers in separate transaction
-                applyVouchersToOrderSeparateTransaction(order.getId(), tempDto, order.getTongThanhToan());
-                log.info("Applied {} new vouchers to order {}", vouchersToAdd.size(), order.getId());
-            }
-
-        } catch (Exception e) {
-            log.error("Error processing voucher updates for order {}: {}", order.getId(), e.getMessage(), e);
-            throw new RuntimeException("Failed to process voucher updates", e);
-        }
-    }
-
-    /**
-     * Get list of currently applied voucher codes for an order.
-     *
-     * @param orderId The order ID
-     * @return List of voucher codes currently applied to the order
-     */
-    private List<String> getCurrentAppliedVoucherCodes(Long orderId) {
-        List<HoaDonPhieuGiamGia> appliedVouchers = hoaDonPhieuGiamGiaRepository.findByHoaDonId(orderId);
-        return appliedVouchers.stream()
-                .map(hpgg -> hpgg.getPhieuGiamGia().getMaPhieuGiamGia())
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Find vouchers that need to be removed (present in current but not in new list).
-     *
-     * @param currentVoucherCodes Current voucher codes
-     * @param newVoucherCodes New voucher codes
-     * @return List of voucher codes to remove
-     */
-    private List<String> findVouchersToRemove(List<String> currentVoucherCodes, List<String> newVoucherCodes) {
-        return currentVoucherCodes.stream()
-                .filter(code -> !newVoucherCodes.contains(code))
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Find vouchers that need to be added (present in new but not in current list).
-     *
-     * @param currentVoucherCodes Current voucher codes
-     * @param newVoucherCodes New voucher codes
-     * @return List of voucher codes to add
-     */
-    private List<String> findVouchersToAdd(List<String> currentVoucherCodes, List<String> newVoucherCodes) {
-        return newVoucherCodes.stream()
-                .filter(code -> !currentVoucherCodes.contains(code))
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Remove specific vouchers from an order and restore their usage counts.
-     *
-     * @param orderId The order ID
-     * @param voucherCodesToRemove List of voucher codes to remove
-     */
-    private void removeVouchersFromOrder(Long orderId, List<String> voucherCodesToRemove) {
-        if (voucherCodesToRemove.isEmpty()) {
-            return;
-        }
-
-        try {
-            // Use existing PhieuGiamGiaService method but filter by specific voucher codes
-            List<HoaDonPhieuGiamGia> appliedVouchers = hoaDonPhieuGiamGiaRepository.findByHoaDonId(orderId);
-
-            for (HoaDonPhieuGiamGia appliedVoucher : appliedVouchers) {
-                String voucherCode = appliedVoucher.getPhieuGiamGia().getMaPhieuGiamGia();
-
-                if (voucherCodesToRemove.contains(voucherCode)) {
-                    PhieuGiamGia voucher = appliedVoucher.getPhieuGiamGia();
-
-                    // Decrement usage count
-                    if (voucher.getSoLuongDaDung() > 0) {
-                        voucher.setSoLuongDaDung(voucher.getSoLuongDaDung() - 1);
-                        phieuGiamGiaRepository.save(voucher);
-                        log.debug("Decremented usage count for voucher {}: {} -> {}",
-                                voucherCode, voucher.getSoLuongDaDung() + 1, voucher.getSoLuongDaDung());
-                    }
-
-                    // Remove the relationship
-                    hoaDonPhieuGiamGiaRepository.delete(appliedVoucher);
-                    log.debug("Removed voucher {} from order {}", voucherCode, orderId);
-                }
-            }
-
-        } catch (Exception e) {
-            log.error("Error removing vouchers from order {}: {}", orderId, e.getMessage(), e);
-            throw new RuntimeException("Failed to remove vouchers from order", e);
-        }
-    }
-
-    /**
-     * Validate voucher comparison logic for testing purposes.
-     * This method can be used to verify that voucher comparison works correctly.
-     *
-     * @param currentVoucherCodes Current voucher codes
-     * @param newVoucherCodes New voucher codes
-     * @return Map containing comparison results for validation
-     */
-    public Map<String, Object> validateVoucherComparison(List<String> currentVoucherCodes, List<String> newVoucherCodes) {
-        Map<String, Object> result = new HashMap<>();
-
-        List<String> vouchersToRemove = findVouchersToRemove(currentVoucherCodes, newVoucherCodes);
-        List<String> vouchersToAdd = findVouchersToAdd(currentVoucherCodes, newVoucherCodes);
-
-        result.put("currentVouchers", currentVoucherCodes);
-        result.put("newVouchers", newVoucherCodes);
-        result.put("vouchersToRemove", vouchersToRemove);
-        result.put("vouchersToAdd", vouchersToAdd);
-        result.put("hasChanges", !vouchersToRemove.isEmpty() || !vouchersToAdd.isEmpty());
-
-        log.debug("Voucher comparison validation: Current={}, New={}, ToRemove={}, ToAdd={}",
-                currentVoucherCodes, newVoucherCodes, vouchersToRemove, vouchersToAdd);
-
-        return result;
     }
 
     /**
@@ -1060,18 +915,10 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
 
         // Recalculate totals after line item updates
         recalculateOrderTotals(existingHoaDon);
-
-        // NEW: Process voucher updates if voucherCodes provided
-        if (hoaDonDto.getVoucherCodes() != null) {
-            try {
-                processVoucherUpdatesForOrder(existingHoaDon, hoaDonDto.getVoucherCodes());
-                log.info("Voucher updates processed successfully for order {}", existingHoaDon.getId());
-            } catch (Exception e) {
-                log.error("Failed to process voucher updates for order {}: {}", existingHoaDon.getId(), e.getMessage());
-                throw new RuntimeException("Failed to process voucher updates: " + e.getMessage(), e);
-            }
+        // Trạng thái công nợ
+        if (hoaDonDto.getTrangThaiCongNo() != null) {
+            existingHoaDon.setTrangThaiCongNo(hoaDonDto.getTrangThaiCongNo());
         }
-
         // Save order with optimistic locking retry for HoaDonChiTiet updates
         HoaDon savedHoaDon = optimisticLockingService.executeWithRetryAndConstraintHandling(
                 () -> hoaDonRepository.save(existingHoaDon),
@@ -1136,6 +983,20 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
         }
 
         return toDtoWithPaymentMethod(savedHoaDon);
+    }
+    @Transactional
+    public HoaDon refundCongNo(Long id) {
+        HoaDon hoaDonRefund = hoaDonRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Không tìm thấy hóa đơn"));
+        hoaDonRefund.setTrangThaiCongNo(TrangThaiCongNo.HOAN_PHI.name());
+        return hoaDonRepository.save(hoaDonRefund);
+    }
+    @Transactional
+    public HoaDon updateCongNo(Long id, String trangThaiCongNo) {
+        HoaDon hoaDonRefund = hoaDonRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Không tìm thấy hóa đơn"));
+        hoaDonRefund.setTrangThaiCongNo(trangThaiCongNo);
+        return hoaDonRepository.save(hoaDonRefund);
     }
 
     @Transactional(readOnly = true)
@@ -2014,28 +1875,6 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
      * Update order line items with inventory management.
      * This handles adding, removing, and updating quantities of line items.
      */
-    /**
-     * Helper method to get existing serial numbers for an order
-     * Used to distinguish between existing SOLD serial numbers and new items requiring reservation
-     */
-    private Set<String> getExistingOrderSerialNumbers(Long orderId) {
-        try {
-            List<SerialNumber> existingSerialNumbers = serialNumberService.getSerialNumbersByOrderId(orderId.toString());
-            Set<String> serialNumberValues = existingSerialNumbers.stream()
-                    .map(SerialNumber::getSerialNumberValue)
-                    .collect(Collectors.toSet());
-
-            log.debug("Found {} existing serial numbers for order {}: {}",
-                     serialNumberValues.size(), orderId, serialNumberValues);
-            return serialNumberValues;
-        } catch (Exception e) {
-            log.error("Failed to fetch existing serial numbers for order {}: {}", orderId, e.getMessage());
-            // Return empty set to be safe - this will cause all items to be treated as new
-            // which is safer than potentially missing existing items
-            return new HashSet<>();
-        }
-    }
-
     @Transactional
     public void updateOrderLineItems(HoaDon existingHoaDon, HoaDonDto hoaDonDto) {
         // Only allow line item updates for orders that haven't been shipped
@@ -2045,9 +1884,6 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
                 existingHoaDon.getTrangThaiDonHang() == TrangThaiDonHang.DA_HUY) {
             throw new IllegalStateException("Cannot modify line items for orders in status: " + existingHoaDon.getTrangThaiDonHang());
         }
-
-        log.info("Starting order line items update for order {} with {} new items",
-                 existingHoaDon.getId(), hoaDonDto.getChiTiet() != null ? hoaDonDto.getChiTiet().size() : 0);
 
         // Get current line items
         List<HoaDonChiTiet> currentItems = new ArrayList<>(existingHoaDon.getHoaDonChiTiets());
@@ -2174,34 +2010,15 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
 
         // Apply inventory reservations for new items
         if (!itemsToReserve.isEmpty()) {
-            // CRITICAL FIX: Get existing serial numbers to avoid re-reserving SOLD items
-            Set<String> existingSerialNumbers = getExistingOrderSerialNumbers(existingHoaDon.getId());
-            log.info("Found {} existing serial numbers for order {}", existingSerialNumbers.size(), existingHoaDon.getId());
-
-            // Create temporary order items for reservation, filtering out existing serial numbers
+            // Create temporary order items for reservation
             List<HoaDonChiTietDto> tempOrderItems = new ArrayList<>();
-            int filteredItemsCount = 0;
-
             for (HoaDonChiTietDto newItem : newItems) {
                 if (newItem.getId() == null) {
-                    // Check if this item has a serial number that already exists in the order
-                    if (newItem.getSerialNumber() != null && existingSerialNumbers.contains(newItem.getSerialNumber())) {
-                        log.debug("Skipping reservation for existing serial number: {} (already SOLD/committed to this order)",
-                                 newItem.getSerialNumber());
-                        filteredItemsCount++;
-                    } else {
-                        // This is a truly new item that needs reservation
-                        tempOrderItems.add(newItem);
-                        log.debug("Adding new item for reservation: sanPhamChiTietId={}, serialNumber={}",
-                                 newItem.getSanPhamChiTietId(), newItem.getSerialNumber());
-                    }
+                    tempOrderItems.add(newItem);
                 }
             }
 
-            log.info("Filtered out {} existing items, {} truly new items need reservation",
-                     filteredItemsCount, tempOrderItems.size());
-
-            // Reserve items using the existing service method - only for truly new items
+            // Reserve items using the existing service method
             if (!tempOrderItems.isEmpty()) {
                 serialNumberService.reserveItemsWithTracking(
                         tempOrderItems,
@@ -2209,10 +2026,8 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
                         existingHoaDon.getId().toString(),
                         "system"
                 );
-                log.info("Successfully reserved {} new items for order update", tempOrderItems.size());
-            } else {
-                log.info("No new items requiring reservation for order update");
             }
+            log.info("Reserved {} items for order update", itemsToReserve.size());
         }
 
         // Recalculate order totals
@@ -2859,284 +2674,13 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
     }
 
     /**
-     * Populate serial number information in HoaDonChiTietDto objects from SerialNumber records.
-     * This method enhances the DTO with serial number data after mapping with comprehensive
-     * error handling, performance tracking, and graceful degradation.
-     * Follows the same pattern as populatePaymentMethod for consistency.
-     *
-     * @param hoaDonDto The order DTO to populate with serial number information
-     */
-    private void populateSerialNumbers(HoaDonDto hoaDonDto) {
-        // Performance tracking
-        long startTime = System.currentTimeMillis();
-        String orderId = hoaDonDto != null && hoaDonDto.getId() != null ? hoaDonDto.getId().toString() : "unknown";
-
-        // Input validation with detailed logging
-        if (hoaDonDto == null) {
-            log.warn("Serial number population skipped - hoaDonDto is null");
-            return;
-        }
-
-        if (hoaDonDto.getId() == null) {
-            log.warn("Serial number population skipped - order ID is null");
-            return;
-        }
-
-        if (hoaDonDto.getChiTiet() == null || hoaDonDto.getChiTiet().isEmpty()) {
-            log.debug("Serial number population skipped - no order line items found for order ID: {}", orderId);
-            return;
-        }
-
-        try {
-            log.debug("Starting serial number population for order ID: {} with {} line items",
-                     orderId, hoaDonDto.getChiTiet().size());
-
-            // Query serial numbers with enhanced error handling
-            List<SerialNumber> orderSerialNumbers = null;
-            long queryStartTime = System.currentTimeMillis();
-
-            try {
-                orderSerialNumbers = serialNumberService.getSerialNumbersByOrderId(orderId);
-                long queryTime = System.currentTimeMillis() - queryStartTime;
-                log.debug("Serial number query completed for order ID: {} in {}ms", orderId, queryTime);
-
-                // Performance warning for slow queries
-                if (queryTime > 1000) {
-                    log.warn("Slow serial number query detected for order ID: {} - took {}ms", orderId, queryTime);
-                }
-
-            } catch (Exception queryException) {
-                long queryTime = System.currentTimeMillis() - queryStartTime;
-                log.error("Failed to query serial numbers for order ID: {} after {}ms - Error: {}",
-                         orderId, queryTime, queryException.getMessage(), queryException);
-
-                // Graceful degradation - continue without serial numbers
-                log.warn("Continuing order processing without serial numbers for order ID: {}", orderId);
-                return;
-            }
-
-            // Handle empty or null results
-            if (orderSerialNumbers == null) {
-                log.warn("SerialNumberService returned null for order ID: {} - this may indicate a service issue", orderId);
-                return;
-            }
-
-            if (orderSerialNumbers.isEmpty()) {
-                log.debug("No serial numbers found for order ID: {} - order may not have serialized products", orderId);
-                return;
-            }
-
-            log.debug("Found {} serial numbers for order ID: {}", orderSerialNumbers.size(), orderId);
-
-            // Validate and filter serial numbers with detailed logging
-            List<SerialNumber> validSerialNumbers = new ArrayList<>();
-            int invalidSerialCount = 0;
-
-            for (SerialNumber serialNumber : orderSerialNumbers) {
-                if (serialNumber == null) {
-                    invalidSerialCount++;
-                    log.warn("Null serial number found in results for order ID: {}", orderId);
-                    continue;
-                }
-
-                if (serialNumber.getSanPhamChiTiet() == null) {
-                    invalidSerialCount++;
-                    log.warn("Serial number {} has null product variant for order ID: {}",
-                            serialNumber.getId(), orderId);
-                    continue;
-                }
-
-                if (serialNumber.getSanPhamChiTiet().getId() == null) {
-                    invalidSerialCount++;
-                    log.warn("Serial number {} has product variant with null ID for order ID: {}",
-                            serialNumber.getId(), orderId);
-                    continue;
-                }
-
-                validSerialNumbers.add(serialNumber);
-            }
-
-            if (invalidSerialCount > 0) {
-                log.warn("Found {} invalid serial numbers out of {} total for order ID: {}",
-                        invalidSerialCount, orderSerialNumbers.size(), orderId);
-            }
-
-            if (validSerialNumbers.isEmpty()) {
-                log.warn("No valid serial numbers found for order ID: {} after filtering", orderId);
-                return;
-            }
-
-            // Group serial numbers by variant ID with error handling
-            Map<Long, List<SerialNumber>> serialsByVariant;
-            try {
-                serialsByVariant = validSerialNumbers.stream()
-                    .collect(Collectors.groupingBy(sn -> sn.getSanPhamChiTiet().getId()));
-
-                log.debug("Grouped {} valid serial numbers into {} variants for order ID: {}",
-                         validSerialNumbers.size(), serialsByVariant.size(), orderId);
-
-            } catch (Exception groupingException) {
-                log.error("Failed to group serial numbers by variant for order ID: {} - Error: {}",
-                         orderId, groupingException.getMessage(), groupingException);
-                return;
-            }
-
-            // Populate serial number information in order line items with enhanced error handling
-            int populatedCount = 0;
-            int skippedCount = 0;
-            int errorCount = 0;
-
-            for (HoaDonChiTietDto chiTiet : hoaDonDto.getChiTiet()) {
-                try {
-                    if (chiTiet == null) {
-                        skippedCount++;
-                        log.warn("Null order line item found for order ID: {}", orderId);
-                        continue;
-                    }
-
-                    if (chiTiet.getSanPhamChiTietId() == null) {
-                        skippedCount++;
-                        log.warn("Order line item missing sanPhamChiTietId for order ID: {}", orderId);
-                        continue;
-                    }
-
-                    List<SerialNumber> variantSerials = serialsByVariant.get(chiTiet.getSanPhamChiTietId());
-
-                    if (variantSerials != null && !variantSerials.isEmpty()) {
-                        // Enhanced serial number selection with validation
-                        SerialNumber selectedSerial = null;
-
-                        for (SerialNumber serialNumber : variantSerials) {
-                            if (serialNumber != null &&
-                                serialNumber.getId() != null &&
-                                serialNumber.getSerialNumberValue() != null &&
-                                !serialNumber.getSerialNumberValue().trim().isEmpty()) {
-                                selectedSerial = serialNumber;
-                                break;
-                            }
-                        }
-
-                        if (selectedSerial != null) {
-                            chiTiet.setSerialNumberId(selectedSerial.getId());
-                            chiTiet.setSerialNumber(selectedSerial.getSerialNumberValue().trim());
-
-                            populatedCount++;
-                            log.debug("Populated serial number {} for variant ID: {} in order ID: {}",
-                                     selectedSerial.getSerialNumberValue(), chiTiet.getSanPhamChiTietId(), orderId);
-
-                            // Log information about multiple serial numbers
-                            if (variantSerials.size() > 1) {
-                                log.debug("Multiple serial numbers ({}) found for variant ID: {} in order ID: {}, using: {}",
-                                         variantSerials.size(), chiTiet.getSanPhamChiTietId(), orderId,
-                                         selectedSerial.getSerialNumberValue());
-                            }
-                        } else {
-                            skippedCount++;
-                            log.warn("No valid serial numbers found for variant ID: {} in order ID: {} - all serial numbers were null or invalid",
-                                    chiTiet.getSanPhamChiTietId(), orderId);
-                        }
-                    } else {
-                        skippedCount++;
-                        log.debug("No serial numbers found for variant ID: {} in order ID: {}",
-                                 chiTiet.getSanPhamChiTietId(), orderId);
-                    }
-
-                } catch (Exception itemException) {
-                    errorCount++;
-                    log.error("Failed to populate serial number for line item with variant ID: {} in order ID: {} - Error: {}",
-                             chiTiet != null ? chiTiet.getSanPhamChiTietId() : "unknown", orderId,
-                             itemException.getMessage(), itemException);
-
-                    // Clear any partially set data for this item
-                    if (chiTiet != null) {
-                        chiTiet.setSerialNumberId(null);
-                        chiTiet.setSerialNumber(null);
-                    }
-                }
-            }
-
-            // Final success logging with performance metrics
-            long executionTime = System.currentTimeMillis() - startTime;
-            log.info("Serial number population completed for order ID: {} - Populated: {}, Skipped: {}, Errors: {}, Total items: {}, Execution time: {}ms",
-                     orderId, populatedCount, skippedCount, errorCount, hoaDonDto.getChiTiet().size(), executionTime);
-
-            // Performance warning for slow population
-            if (executionTime > 2000) {
-                log.warn("Slow serial number population detected for order ID: {} - took {}ms", orderId, executionTime);
-            }
-
-        } catch (Exception e) {
-            // Comprehensive error handling with detailed logging
-            long executionTime = System.currentTimeMillis() - startTime;
-            log.error("Critical failure during serial number population for order ID: {} after {}ms - Error type: {}, Message: {}",
-                     orderId, executionTime, e.getClass().getSimpleName(), e.getMessage(), e);
-
-            // Clear any partially populated serial number data to maintain consistency
-            try {
-                if (hoaDonDto.getChiTiet() != null) {
-                    int clearedCount = 0;
-                    for (HoaDonChiTietDto chiTiet : hoaDonDto.getChiTiet()) {
-                        if (chiTiet != null && (chiTiet.getSerialNumberId() != null || chiTiet.getSerialNumber() != null)) {
-                            chiTiet.setSerialNumberId(null);
-                            chiTiet.setSerialNumber(null);
-                            clearedCount++;
-                        }
-                    }
-
-                    if (clearedCount > 0) {
-                        log.warn("Cleared {} partially populated serial numbers for order ID: {} due to population failure",
-                                clearedCount, orderId);
-                    }
-                }
-            } catch (Exception cleanupException) {
-                log.error("Failed to cleanup partially populated serial numbers for order ID: {} - Error: {}",
-                         orderId, cleanupException.getMessage(), cleanupException);
-            }
-
-            // Log final failure summary
-            log.warn("Serial number population failed for order ID: {} - order processing will continue without serial numbers", orderId);
-        }
-    }
-
-    /**
-     * Enhanced toDto method that includes payment method and serial number population.
-     * This replaces direct mapper calls to ensure both payment method and serial number
-     * information are always populated in the DTO.
-     *
-     * @param hoaDon The order entity to convert to DTO
-     * @return HoaDonDto with populated payment method and serial number information
+     * Enhanced toDto method that includes payment method population.
+     * This replaces direct mapper calls to ensure payment method is always populated.
      */
     private HoaDonDto toDtoWithPaymentMethod(HoaDon hoaDon) {
-        long startTime = System.currentTimeMillis();
-
-        try {
-            HoaDonDto dto = hoaDonMapper.toDto(hoaDon);
-
-            // Populate payment method information
-            populatePaymentMethod(dto);
-            log.debug("Payment method populated for order ID: {}", dto.getId());
-
-            // Populate serial number information for order line items
-            populateSerialNumbers(dto);
-            log.debug("Serial number population completed for order ID: {}", dto.getId());
-
-            long executionTime = System.currentTimeMillis() - startTime;
-            log.debug("Order DTO population completed for order ID: {} in {}ms", dto.getId(), executionTime);
-
-            return dto;
-
-        } catch (Exception e) {
-            long executionTime = System.currentTimeMillis() - startTime;
-            log.error("Failed to populate order DTO for order ID: {} after {}ms - Error: {}",
-                     hoaDon.getId(), executionTime, e.getMessage(), e);
-
-            // Return basic DTO without enhancements to ensure order retrieval doesn't fail
-            // This provides graceful degradation when population methods fail
-            HoaDonDto basicDto = hoaDonMapper.toDto(hoaDon);
-            log.warn("Returning basic DTO without payment method and serial number population for order ID: {}",
-                     basicDto.getId());
-            return basicDto;
-        }
+        HoaDonDto dto = hoaDonMapper.toDto(hoaDon);
+        populatePaymentMethod(dto);
+        return dto;
     }
 
     /**

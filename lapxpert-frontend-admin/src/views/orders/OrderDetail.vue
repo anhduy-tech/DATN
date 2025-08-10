@@ -289,6 +289,16 @@
                   <span class="font-semibold">{{ formatCurrency(order.phiVanChuyen) }}</span>
                 </div>
 
+                <div v-if="order.soTienKhachNo" class="flex justify-between items-center">
+                  <span class="text-surface-600">Tổng tiền khách nợ shop:</span>
+                  <span class="font-semibold">{{ formatCurrency(order.soTienKhachNo) }}</span>
+                </div>
+                <div v-if="order.soTienShopNo" class="flex justify-between items-center">
+                  <span class="text-surface-600">Tổng tiền shop nợ khách:</span>
+                  <span class="font-semibold">{{ formatCurrency(order.soTienShopNo) }}</span>
+                </div>
+
+
                 <div v-if="order.giaTriGiamGiaVoucher" class="flex justify-between items-center">
                   <span class="text-surface-600">Giảm giá voucher:</span>
                   <span class=" Hawkins font-semibold text-green-600">-{{ formatCurrency(order.giaTriGiamGiaVoucher) }}</span>
@@ -431,6 +441,7 @@
               :total-items="totalQuantity"
               :payment-method="getPaymentMethod()"
               :payment-status="order.trangThaiThanhToan"
+              :debt-status="order.trangThaiCongNo"
               :paid-amount="getPaidAmount()"
               :applied-vouchers="order.hoaDonPhieuGiamGias || []"
               :show-payment-status="true"
@@ -975,16 +986,16 @@ const orderTimeline = computed(() => {
     timeline.push({
       status: statusInfo.label,
       title: isCurrent ? `Hiện tại: ${statusInfo.label}` :
-             isCompleted ? `Đã hoàn thành: ${statusInfo.label}` :
-             `Sắp tới: ${statusInfo.label}`,
+        isCompleted ? `Đã hoàn thành: ${statusInfo.label}` :
+          `Sắp tới: ${statusInfo.label}`,
       description,
       timestamp,
       user: isPending ? null : user,
       icon: statusInfo.icon,
       severity: isPending ? 'secondary' : statusInfo.severity,
       markerClass: isPending ? 'bg-surface-100 border-surface-300 text-surface-500' :
-                   isCurrent ? getTimelineMarkerClass(status) + ' ring-2 ring-primary-200' :
-                   getTimelineMarkerClass(status),
+        isCurrent ? getTimelineMarkerClass(status) + ' ring-2 ring-primary-200' :
+          getTimelineMarkerClass(status),
       completed: isCompleted,
       current: isCurrent,
       pending: isPending,
@@ -1014,8 +1025,8 @@ const orderTimeline = computed(() => {
       status: 'Trả hàng',
       title: currentStatus === 'YEU_CAU_TRA_HANG' ? 'Yêu cầu trả hàng' : 'Đã trả hàng',
       description: currentStatus === 'YEU_CAU_TRA_HANG' ?
-                   'Khách hàng yêu cầu trả hàng' :
-                   'Đã xử lý trả hàng thành công',
+        'Khách hàng yêu cầu trả hàng' :
+        'Đã xử lý trả hàng thành công',
       timestamp: order.value.ngayCapNhat || order.value.ngayTao,
       user: order.value.nguoiCapNhat || 'Hệ thống',
       icon: 'pi pi-undo',
@@ -1412,8 +1423,8 @@ const handleProcessRefund = async () => {
 const handleUpdatePaymentStatus = async (statusData) => {
   if (!order.value) return;
   const confirmed = await confirmDialog.showConfirmDialog({
-    title: 'Cập nhật trạng thái thanh toán',
-    message: `Bạn có chắc chắn muốn cập nhật trạng thái thanh toán cho đơn hàng ${order.value.maHoaDon}?`,
+    title: 'Cập nhật trạng thái công nợ',
+    message: `Bạn có chắc chắn muốn cập nhật trạng thái công nợ cho đơn hàng ${order.value.maHoaDon}?`,
     severity: 'info',
     confirmLabel: 'Cập nhật',
     cancelLabel: 'Hủy bỏ'
@@ -1424,7 +1435,7 @@ const handleUpdatePaymentStatus = async (statusData) => {
     const response = await orderStore.updatePaymentStatus(
       order.value.id,
       statusData.status,
-      statusData.note || 'Cập nhật trạng thái thanh toán'
+      statusData.note || 'Cập nhật trạng thái công nợ'
     );
     if (response) {
       order.value = { ...order.value, ...response };
@@ -1434,15 +1445,15 @@ const handleUpdatePaymentStatus = async (statusData) => {
       toast.add({
         severity: 'success',
         summary: 'Thành công',
-        detail: 'Cập nhật trạng thái thanh toán thành công',
+        detail: 'Cập nhật trạng thái công nợ thành công',
         life: 3000
       });
     }
   } catch (err) {
     console.error('Error updating payment status:', err);
-    let errorMessage = 'Không thể cập nhật trạng thái thanh toán';
+    let errorMessage = 'Không thể cập nhật trạng thái công nợ';
     if (err.response?.status === 403) {
-      errorMessage = 'Bạn không có quyền thực hiện thao tác này. Chỉ Admin và Staff mới có thể cập nhật trạng thái thanh toán.';
+      errorMessage = 'Bạn không có quyền thực hiện thao tác này. Chỉ Admin và Staff mới có thể cập nhật trạng thái công nợ.';
     } else if (err.response?.status === 401) {
       errorMessage = 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
     }

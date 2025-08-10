@@ -97,6 +97,16 @@
               class="text-sm"
             />
           </div>
+          <div class="flex justify-between items-center">
+            <span class="text-surface-600 dark:text-surface-400">
+              Trạng thái công nợ:
+            </span>
+            <Badge
+              :value="debtStatusInfo.label"
+              :severity="debtStatusInfo.severity"
+              class="text-sm"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -186,12 +196,25 @@ const props = defineProps({
     default: 0
   },
 
+  debtors: {
+    type: Number,
+    default: 0
+  },
+  shopDebt: {
+    type: Number,
+    default: 0
+  },
+
   // Payment information
   paymentMethod: {
     type: String,
     default: null
   },
   paymentStatus: {
+    type: String,
+    default: null
+  },
+  debtStatus: {
     type: String,
     default: null
   },
@@ -240,7 +263,35 @@ const paymentStatusInfo = computed(() => {
 
   return statusMap[props.paymentStatus] || { label: 'Không xác định', severity: 'secondary' }
 })
+const debtStatusInfo = computed(() => {
+  const debtStatusMap = {
+    'HOAN_PHI': {
+      label: 'Hoàn phí',
+      severity: 'info'
+    },
+    'PHU_PHI': {
+      label: 'Phụ phí',
+      severity: 'warn'
+    },
+    'DA_HOAN_PHI': {
+      label: 'Đã hoàn phí',
+      severity: 'success'
+    },
+    'DA_THU_PHU_PHI': {
+      label: 'Đã thu phụ phí',
+      severity: 'success'
+    },
+    'HOAN_THANH_CONG_NO': {
+      label: 'Hoàn thành công nợ',
+      severity: 'secondary'
+    }
+  }
 
+  return debtStatusMap[props.debtStatus] || {
+    label: 'Không xác định',
+    severity: 'secondary'
+  }
+})
 const paymentMethodInfo = computed(() => {
   const methodMap = {
     'TIEN_MAT': {
