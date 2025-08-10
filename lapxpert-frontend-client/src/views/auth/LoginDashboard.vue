@@ -246,7 +246,7 @@ c-320 15 -693 83 -1053 192 -277 84 -693 270 -945 423 -80 48 -95 62 -101 88
               </g>
             </svg>
             <div class="text-surface-900 dark:text-surface-0 text-3xl font-medium mb-4"
-              >Chào mừng đến lapxpert Dashboard</div
+              >Chào mừng đến lapxpert</div
             >
             <span class="text-muted-color font-medium">Đăng nhập để tiếp tục</span>
           </div>

@@ -99,17 +99,15 @@ c-320 15 -693 83 -1053 192 -277 84 -693 270 -945 423 -80 48 -95 62 -101 88
             chủ</router-link>
           <router-link to="/shop/products"
             class="text-gray-600 hover:text-primary-500 transition-colors duration-300">Sản phẩm</router-link>
+          <router-link to="/shop/vouchers"
+            class="text-gray-600 hover:text-primary-500 transition-colors duration-300">Phiếu giảm giá</router-link>
           <router-link to="/shop/support" class="text-gray-600 hover:text-primary-500 transition-colors duration-300">Hỗ
             trợ</router-link>
-          <router-link to="/shop/vouchers"
-            class="text-gray-600 hover:text-primary-500 transition-colors duration-300">Vouchers</router-link>
+          <router-link to="/shop/support" class="text-gray-600 hover:text-primary-500 transition-colors duration-300">Về chúng tôi</router-link>
         </nav>
 
         <!-- Header Icons -->
         <div class="flex items-center space-x-4">
-          <button class="text-gray-600 hover:text-primary-500">
-            <i class="pi pi-search text-xl"></i>
-          </button>
           <router-link to="/shop/cart" class="relative text-gray-600 hover:text-primary-500">
             <i class="pi pi-shopping-cart text-xl"></i>
             <span v-if="cartItemCount > 0"
