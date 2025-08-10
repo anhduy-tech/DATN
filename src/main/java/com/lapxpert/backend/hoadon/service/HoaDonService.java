@@ -12,12 +12,14 @@ import com.lapxpert.backend.hoadon.entity.HoaDon;
 import com.lapxpert.backend.hoadon.entity.HoaDonAuditHistory;
 import com.lapxpert.backend.common.event.OrderChangeEvent;
 import com.lapxpert.backend.hoadon.entity.HoaDonChiTiet;
+import com.lapxpert.backend.hoadon.entity.HoaDonPhieuGiamGia;
 import com.lapxpert.backend.hoadon.entity.HoaDonThanhToan;
 import com.lapxpert.backend.hoadon.entity.HoaDonThanhToanId;
 import com.lapxpert.backend.hoadon.entity.ThanhToan;
 import com.lapxpert.backend.hoadon.mapper.HoaDonMapper;
 import com.lapxpert.backend.hoadon.repository.HoaDonRepository;
 import com.lapxpert.backend.hoadon.repository.HoaDonAuditHistoryRepository;
+import com.lapxpert.backend.hoadon.repository.HoaDonPhieuGiamGiaRepository;
 import com.lapxpert.backend.hoadon.repository.HoaDonThanhToanRepository;
 import com.lapxpert.backend.hoadon.repository.ThanhToanRepository;
 import com.lapxpert.backend.hoadon.enums.LoaiHoaDon;
@@ -35,6 +37,8 @@ import com.lapxpert.backend.sanpham.entity.sanpham.SanPhamChiTiet;
 import com.lapxpert.backend.sanpham.repository.SanPhamChiTietRepository;
 import com.lapxpert.backend.sanpham.service.SerialNumberService;
 import com.lapxpert.backend.sanpham.service.PricingService;
+import com.lapxpert.backend.phieugiamgia.entity.PhieuGiamGia;
+import com.lapxpert.backend.phieugiamgia.repository.PhieuGiamGiaRepository;
 import com.lapxpert.backend.phieugiamgia.service.PhieuGiamGiaService;
 
 import com.lapxpert.backend.shipping.service.ShippingCalculatorService;
@@ -58,6 +62,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.stream.Collectors;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -72,6 +77,7 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
 
     private final HoaDonRepository hoaDonRepository;
     private final HoaDonAuditHistoryRepository auditHistoryRepository;
+    private final HoaDonPhieuGiamGiaRepository hoaDonPhieuGiamGiaRepository;
     private final HoaDonThanhToanRepository hoaDonThanhToanRepository;
     private final ThanhToanRepository thanhToanRepository;
     private final HoaDonMapper hoaDonMapper;
@@ -81,6 +87,7 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
     private final SerialNumberService serialNumberService;
     private final PricingService pricingService;
     private final PhieuGiamGiaService phieuGiamGiaService;
+    private final PhieuGiamGiaRepository phieuGiamGiaRepository;
     private final KiemTraTrangThaiHoaDonService kiemTraTrangThaiService;
     private final MoMoService moMoGatewayService;
     private final PaymentValidationService paymentParameterValidationService;
@@ -493,6 +500,159 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
     }
 
     /**
+     * Process voucher updates for an order during order modification.
+     * Compares current and new voucher lists to determine changes and applies them.
+     *
+     * @param order The order being updated
+     * @param newVoucherCodes List of voucher codes that should be applied to the order
+     */
+    @Transactional
+    private void processVoucherUpdatesForOrder(HoaDon order, List<String> newVoucherCodes) {
+        try {
+            log.info("Processing voucher updates for order {}", order.getId());
+
+            // 1. Get current applied vouchers
+            List<String> currentVoucherCodes = getCurrentAppliedVoucherCodes(order.getId());
+            log.debug("Current vouchers for order {}: {}", order.getId(), currentVoucherCodes);
+            log.debug("New vouchers for order {}: {}", order.getId(), newVoucherCodes);
+
+            // 2. Compare and identify changes
+            List<String> vouchersToRemove = findVouchersToRemove(currentVoucherCodes, newVoucherCodes);
+            List<String> vouchersToAdd = findVouchersToAdd(currentVoucherCodes, newVoucherCodes);
+
+            log.info("Voucher changes for order {}: {} to remove, {} to add",
+                    order.getId(), vouchersToRemove.size(), vouchersToAdd.size());
+
+            // 3. Remove old voucher relationships and restore usage counts
+            if (!vouchersToRemove.isEmpty()) {
+                removeVouchersFromOrder(order.getId(), vouchersToRemove);
+                log.info("Removed {} vouchers from order {}", vouchersToRemove.size(), order.getId());
+            }
+
+            // 4. Apply new vouchers if any
+            if (!vouchersToAdd.isEmpty()) {
+                // Create a temporary DTO with only the new vouchers for processing
+                HoaDonDto tempDto = new HoaDonDto();
+                tempDto.setVoucherCodes(vouchersToAdd);
+
+                // Use existing method to apply new vouchers in separate transaction
+                applyVouchersToOrderSeparateTransaction(order.getId(), tempDto, order.getTongThanhToan());
+                log.info("Applied {} new vouchers to order {}", vouchersToAdd.size(), order.getId());
+            }
+
+        } catch (Exception e) {
+            log.error("Error processing voucher updates for order {}: {}", order.getId(), e.getMessage(), e);
+            throw new RuntimeException("Failed to process voucher updates", e);
+        }
+    }
+
+    /**
+     * Get list of currently applied voucher codes for an order.
+     *
+     * @param orderId The order ID
+     * @return List of voucher codes currently applied to the order
+     */
+    private List<String> getCurrentAppliedVoucherCodes(Long orderId) {
+        List<HoaDonPhieuGiamGia> appliedVouchers = hoaDonPhieuGiamGiaRepository.findByHoaDonId(orderId);
+        return appliedVouchers.stream()
+                .map(hpgg -> hpgg.getPhieuGiamGia().getMaPhieuGiamGia())
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Find vouchers that need to be removed (present in current but not in new list).
+     *
+     * @param currentVoucherCodes Current voucher codes
+     * @param newVoucherCodes New voucher codes
+     * @return List of voucher codes to remove
+     */
+    private List<String> findVouchersToRemove(List<String> currentVoucherCodes, List<String> newVoucherCodes) {
+        return currentVoucherCodes.stream()
+                .filter(code -> !newVoucherCodes.contains(code))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Find vouchers that need to be added (present in new but not in current list).
+     *
+     * @param currentVoucherCodes Current voucher codes
+     * @param newVoucherCodes New voucher codes
+     * @return List of voucher codes to add
+     */
+    private List<String> findVouchersToAdd(List<String> currentVoucherCodes, List<String> newVoucherCodes) {
+        return newVoucherCodes.stream()
+                .filter(code -> !currentVoucherCodes.contains(code))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Remove specific vouchers from an order and restore their usage counts.
+     *
+     * @param orderId The order ID
+     * @param voucherCodesToRemove List of voucher codes to remove
+     */
+    private void removeVouchersFromOrder(Long orderId, List<String> voucherCodesToRemove) {
+        if (voucherCodesToRemove.isEmpty()) {
+            return;
+        }
+
+        try {
+            // Use existing PhieuGiamGiaService method but filter by specific voucher codes
+            List<HoaDonPhieuGiamGia> appliedVouchers = hoaDonPhieuGiamGiaRepository.findByHoaDonId(orderId);
+
+            for (HoaDonPhieuGiamGia appliedVoucher : appliedVouchers) {
+                String voucherCode = appliedVoucher.getPhieuGiamGia().getMaPhieuGiamGia();
+
+                if (voucherCodesToRemove.contains(voucherCode)) {
+                    PhieuGiamGia voucher = appliedVoucher.getPhieuGiamGia();
+
+                    // Decrement usage count
+                    if (voucher.getSoLuongDaDung() > 0) {
+                        voucher.setSoLuongDaDung(voucher.getSoLuongDaDung() - 1);
+                        phieuGiamGiaRepository.save(voucher);
+                        log.debug("Decremented usage count for voucher {}: {} -> {}",
+                                voucherCode, voucher.getSoLuongDaDung() + 1, voucher.getSoLuongDaDung());
+                    }
+
+                    // Remove the relationship
+                    hoaDonPhieuGiamGiaRepository.delete(appliedVoucher);
+                    log.debug("Removed voucher {} from order {}", voucherCode, orderId);
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("Error removing vouchers from order {}: {}", orderId, e.getMessage(), e);
+            throw new RuntimeException("Failed to remove vouchers from order", e);
+        }
+    }
+
+    /**
+     * Validate voucher comparison logic for testing purposes.
+     * This method can be used to verify that voucher comparison works correctly.
+     *
+     * @param currentVoucherCodes Current voucher codes
+     * @param newVoucherCodes New voucher codes
+     * @return Map containing comparison results for validation
+     */
+    public Map<String, Object> validateVoucherComparison(List<String> currentVoucherCodes, List<String> newVoucherCodes) {
+        Map<String, Object> result = new HashMap<>();
+
+        List<String> vouchersToRemove = findVouchersToRemove(currentVoucherCodes, newVoucherCodes);
+        List<String> vouchersToAdd = findVouchersToAdd(currentVoucherCodes, newVoucherCodes);
+
+        result.put("currentVouchers", currentVoucherCodes);
+        result.put("newVouchers", newVoucherCodes);
+        result.put("vouchersToRemove", vouchersToRemove);
+        result.put("vouchersToAdd", vouchersToAdd);
+        result.put("hasChanges", !vouchersToRemove.isEmpty() || !vouchersToAdd.isEmpty());
+
+        log.debug("Voucher comparison validation: Current={}, New={}, ToRemove={}, ToAdd={}",
+                currentVoucherCodes, newVoucherCodes, vouchersToRemove, vouchersToAdd);
+
+        return result;
+    }
+
+    /**
      * Apply vouchers to order in a separate transaction to avoid transient entity issues.
      * Uses ID-based approach to completely avoid entity reference issues.
      */
@@ -900,6 +1060,17 @@ public class HoaDonService extends BusinessEntityService<HoaDon, Long, HoaDonDto
 
         // Recalculate totals after line item updates
         recalculateOrderTotals(existingHoaDon);
+
+        // NEW: Process voucher updates if voucherCodes provided
+        if (hoaDonDto.getVoucherCodes() != null) {
+            try {
+                processVoucherUpdatesForOrder(existingHoaDon, hoaDonDto.getVoucherCodes());
+                log.info("Voucher updates processed successfully for order {}", existingHoaDon.getId());
+            } catch (Exception e) {
+                log.error("Failed to process voucher updates for order {}: {}", existingHoaDon.getId(), e.getMessage());
+                throw new RuntimeException("Failed to process voucher updates: " + e.getMessage(), e);
+            }
+        }
 
         // Save order with optimistic locking retry for HoaDonChiTiet updates
         HoaDon savedHoaDon = optimisticLockingService.executeWithRetryAndConstraintHandling(
