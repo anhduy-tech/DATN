@@ -519,7 +519,6 @@ const taiTatCaDuLieu = async () => {
   } catch (error) {
     console.error('Lỗi khi tải dữ liệu:', error)
     loi.value = 'Có lỗi xảy ra khi tải dữ liệu'
-    hienThiLoi(loi.value)
   } finally {
     dangTai.value = false
   }
@@ -775,9 +774,9 @@ onMounted(() => {
 
     <div class="grid grid-cols-12 gap-8">
       <!-- Error Message -->
-      <div v-if="loi" class="col-span-12">
+      <!-- <div v-if="loi" class="col-span-12">
         <Message severity="error" :closable="false">{{ loi }}</Message>
-      </div>
+      </div> -->
 
       <!-- Summary Cards -->
       <div class="col-span-12">

@@ -118,11 +118,6 @@ const adminModel = ref([
     label: 'Hỗ trợ khách hàng',
     items: [
       {
-        label: 'Trợ lý AI',
-        icon: 'icon-[hugeicons--ai-chat-01] size-5',
-        to: '/ai-chat',
-      },
-      {
         label: 'Chat thường',
         icon: 'icon-[solar--chat-line-linear] size-5',
         to: '/chat',
@@ -156,9 +151,9 @@ const staffModel = ref([
     label: 'Hỗ trợ khách hàng',
     items: [
       {
-        label: 'Trợ lý AI',
-        icon: 'icon-[hugeicons--ai-chat-01] size-5',
-        to: '/ai-chat',
+        label: 'Chat với khách hàng',
+        icon: 'icon-[solar--chat-line-linear] size-5',
+        to: '/chat',
       },
     ],
   },

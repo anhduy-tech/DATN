@@ -148,6 +148,21 @@ const router = createRouter({
           component: () => import('@/views/user/customer/CustomerForm.vue'),
         },
         {
+          path: '/profile',
+          name: 'Profile',
+          component: () => import('@/views/user/Profile.vue'),
+          meta: {
+            title: 'Thông tin cá nhân',
+            breadcrumb: [
+              { label: 'Trang chủ', to: '/' },
+              { label: 'Thông tin cá nhân', to: '/profile' }
+            ],
+            icon: 'pi pi-user'
+          }
+        },
+
+        // Order Management Routes
+        {
           path: '/discounts/coupons',
           name: 'coupons',
           component: () => import('@/views/coupons/Coupons.vue'),
