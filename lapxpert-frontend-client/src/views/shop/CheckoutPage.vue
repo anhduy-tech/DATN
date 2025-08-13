@@ -10,6 +10,8 @@ import { useShippingCalculator } from '@/composables/useShippingCalculator';
 import orderApi from '@/apis/orderApi';
 import customerApi from '@/apis/user';
 import voucherApi from '@/apis/voucherApi';
+import AuthService from '@/apis/auth';
+import storageApi from '@/apis/storage';
 
 // PrimeVue Components
 import Card from 'primevue/card';
@@ -30,12 +32,21 @@ const toast = useToast();
 const isBuyNowFlow = ref(false);
 const singleCheckoutItem = ref(null);
 const localCheckoutItems = ref([]);
+const imageUrlCache = ref(new Map());
 
 // Voucher state
 const voucherCode = ref('');
 const appliedVoucher = ref(null);
 const voucherError = ref('');
 const isVoucherLoading = ref(false);
+
+// Auto-applied voucher state
+const autoAppliedVoucher = ref(null);
+const isAutoApplyingVoucher = ref(false);
+
+// Customer address states
+const customerAddresses = ref([]);
+const selectedExistingAddressId = ref(null);
 
 // Use composables for address and shipping
 const {
@@ -118,10 +129,10 @@ const applyVoucher = async () => {
     isVoucherLoading.value = true;
     voucherError.value = '';
     appliedVoucher.value = null;
+    autoAppliedVoucher.value = null;
 
     try {
-        const response = await voucherApi.validateVoucher(voucherCode.value, null, itemsTotal.value);
-
+        const response = await voucherApi.validateVoucher(voucherCode.value, AuthService.isAuthenticated() ? AuthService.getUser().id : null, itemsTotal.value);
         if (response.success && response.data.valid) {
             appliedVoucher.value = response.data;
             toast.add({ severity: 'success', summary: 'Thành công', detail: `Áp dụng voucher thành công! Bạn được giảm ${formatCurrency(response.data.discountAmount)}.`, life: 3000 });
@@ -142,6 +153,121 @@ const removeVoucher = () => {
     voucherCode.value = '';
     voucherError.value = '';
     toast.add({ severity: 'info', summary: 'Thông báo', detail: 'Đã gỡ bỏ mã giảm giá.', life: 3000 });
+};
+
+const confirmRemoveItem = (variantId) => {
+    
+    const index = localCheckoutItems.value.findIndex(i => i.variantId === variantId);
+    if (index > -1) {
+        localCheckoutItems.value.splice(index, 1);
+        toast.add({ severity: 'info', summary: 'Thông báo', detail: 'Đã xóa sản phẩm khỏi giỏ hàng.', life: 3000 });
+    }
+    toast.removeGroup('confirm');
+};
+
+const onExistingAddressSelect = () => {
+    const selectedAddress = customerAddresses.value.find(addr => addr.id === selectedExistingAddressId.value);
+    if (selectedAddress) {
+        setAddressData({
+            duong: selectedAddress.duong,
+            phuongXa: selectedAddress.phuongXa,
+            quanHuyen: selectedAddress.quanHuyen,
+            tinhThanh: selectedAddress.tinhThanh,
+            loaiDiaChi: selectedAddress.loaiDiaChi,
+            laMacDinh: selectedAddress.laMacDinh,
+        });
+        selectedProvince.value = provinces.value.find(p => p.name === selectedAddress.tinhThanh);
+        if (selectedProvince.value) {
+            onProvinceChange();
+            selectedDistrict.value = districts.value.find(d => d.name === selectedAddress.quanHuyen);
+            if (selectedDistrict.value) {
+                onDistrictChange();
+                selectedWard.value = wards.value.find(w => w.name === selectedAddress.phuongXa);
+            }
+        }
+    }
+};
+
+const getProductImageUrl = (image) => {
+  if (!image || !image.length) return null
+
+  // If it's already a full URL, return as is
+  if (image.startsWith('http')) return image
+
+  // Check cache first
+  if (imageUrlCache.value.has(image)) {
+    return imageUrlCache.value.get(image)
+  }
+
+  // Load presigned URL asynchronously
+  loadImageUrl(image)
+
+  // Return null for now, will update when loaded
+  return null
+}
+
+const loadImageUrl = async (imageFilename) => {
+  try {
+    // Get presigned URL for the image filename
+    const presignedUrl = await storageApi.getPresignedUrl('products', imageFilename)
+
+    // Cache the URL for future use
+    imageUrlCache.value.set(imageFilename, presignedUrl)
+
+    // Force reactivity update
+    imageUrlCache.value = new Map(imageUrlCache.value)
+  } catch (error) {
+    console.warn('Error getting presigned URL for image:', imageFilename, error)
+    // Cache null to prevent repeated attempts
+    imageUrlCache.value.set(imageFilename, null)
+  }
+}
+
+const clearSelectedAddress = () => {
+    selectedExistingAddressId.value = null;
+    resetAddressForm();
+};
+
+const applyBestVoucherAutomatically = async () => {
+    if (!AuthService.isAuthenticated() || itemsTotal.value === 0) {
+        autoAppliedVoucher.value = null;
+        return;
+    }
+
+    const user = AuthService.getUser();
+    if (!user || !user.id) {
+        autoAppliedVoucher.value = null;
+        return;
+    }
+
+    isAutoApplyingVoucher.value = true;
+    try {
+        const response = await voucherApi.getBestVoucher(user.id, itemsTotal.value);
+        if (response.success && response.data.found) {
+            const bestVoucher = response.data.voucher;
+            const bestDiscountAmount = response.data.discountAmount;
+
+            if (!appliedVoucher.value || bestDiscountAmount > appliedVoucher.value.discountAmount) {
+                autoAppliedVoucher.value = {
+                    voucher: bestVoucher,
+                    discountAmount: bestDiscountAmount,
+                    message: response.data.message
+                };
+                appliedVoucher.value = autoAppliedVoucher.value;
+                voucherCode.value = bestVoucher.maPhieuGiamGia;
+                toast.add({ severity: 'success', summary: 'Voucher tự động', detail: `Đã áp dụng voucher tốt nhất: ${bestVoucher.maPhieuGiamGia} - Giảm ${formatCurrency(bestDiscountAmount)}.`, life: 5000 });
+            } else {
+                autoAppliedVoucher.value = null;
+            }
+        } else {
+            autoAppliedVoucher.value = null;
+        }
+    } catch (err) {
+        console.error("Error auto-applying best voucher:", err);
+        autoAppliedVoucher.value = null;
+    } finally {
+        isAutoApplyingVoucher.value = false;
+    }
 };
 
 watch(
@@ -175,19 +301,59 @@ watch(
     { deep: true }
 );
 
+watch(() => [itemsTotal.value, AuthService.isAuthenticated()], () => {
+    applyBestVoucherAutomatically();
+}, { immediate: true });
+
 onMounted(async () => {
     await loadShippingConfig();
-
-    // Flow 1: Checkout from cart
     if (cartStore.selectedItemsForCheckout.length > 0) {
         isBuyNowFlow.value = false;
         localCheckoutItems.value = cartStore.selectedItemsForCheckout;
         toast.add({ severity: 'info', summary: 'Giỏ hàng', detail: `Đã tải ${localCheckoutItems.value.length} loại sản phẩm từ giỏ hàng.`, life: 3000 });
-        cartStore.clearSelectedItemsForCheckout(); // Clear after loading
-        return; // Exit after handling cart flow
+        cartStore.clearSelectedItemsForCheckout();
     }
 
-    // Flow 2: Buy Now
+    if (AuthService.isAuthenticated()) {
+        const user = AuthService.getUser();
+        if (user && user.id) {
+            customerInfo.value.hoTen = user.hoTen || '';
+            customerInfo.value.soDienThoai = user.soDienThoai || '';
+            customerInfo.value.email = user.email || '';
+
+            try {
+                const response = await customerApi.getCustomerById(user.id);
+                if (response.data && response.data.diaChis) {
+                    customerAddresses.value = response.data.diaChis;
+                    const defaultAddress = customerAddresses.value.find(addr => addr.laMacDinh);
+                    if (defaultAddress) {
+                        selectedExistingAddressId.value = defaultAddress.id;
+                        setAddressData({
+                            duong: defaultAddress.duong,
+                            phuongXa: defaultAddress.phuongXa,
+                            quanHuyen: defaultAddress.quanHuyen,
+                            tinhThanh: defaultAddress.tinhThanh,
+                            loaiDiaChi: defaultAddress.loaiDiaChi,
+                            laMacDinh: defaultAddress.laMacDinh,
+                        });
+                        selectedProvince.value = provinces.value.find(p => p.name === defaultAddress.tinhThanh);
+                        if (selectedProvince.value) {
+                            await onProvinceChange();
+                            selectedDistrict.value = districts.value.find(d => d.name === defaultAddress.quanHuyen);
+                            if (selectedDistrict.value) {
+                                await onDistrictChange();
+                                selectedWard.value = wards.value.find(w => w.name === defaultAddress.phuongXa);
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Error fetching customer addresses:", err);
+                toast.add({ severity: 'error', summary: 'Lỗi', detail: 'Không thể tải địa chỉ của bạn.', life: 3000 });
+            }
+        }
+    }
+
     const productId = route.query.productId;
     const variantId = route.query.variantId;
     const quantity = parseInt(route.query.quantity || 1);
@@ -206,8 +372,8 @@ onMounted(async () => {
                         image: product.hinhAnh && product.hinhAnh.length > 0 ? product.hinhAnh[0] : null,
                         price: variant.giaKhuyenMai && variant.giaKhuyenMai < variant.giaBan ? variant.giaKhuyenMai : variant.giaBan,
                         quantity: quantity,
-                        sanPhamChiTiet: variant, // Keep full variant info
-                        sanPham: product,       // Keep full product info
+                        sanPhamChiTiet: variant,
+                        sanPham: product,
                     };
                     toast.add({ severity: 'info', summary: 'Mua ngay', detail: `Sản phẩm "${singleCheckoutItem.value.name}" đã sẵn sàng thanh toán.`, life: 3000 });
                 } else {
@@ -259,7 +425,7 @@ const placeOrder = async () => {
             isMixedPayment: false,
             mixedPayments: null,
             voucherCodes: appliedVoucher.value ? [appliedVoucher.value.voucher.maPhieuGiamGia] : [],
-            khachHangId: null,
+            khachHangId: AuthService.isAuthenticated() ? AuthService.getUser().id : null,
             nguoiNhanTen: customerInfo.value.hoTen,
             nguoiNhanSdt: customerInfo.value.soDienThoai,
             nguoiNhanEmail: customerInfo.value.email || null,
@@ -273,14 +439,14 @@ const placeOrder = async () => {
             chiTiet: itemsToOrder.map(item => ({
                 sanPhamChiTietId: item.variantId,
                 soLuong: item.quantity,
-                giaGoc: item.price, // Assuming item.price is the original price
-                giaBan: item.price, // Assuming item.price is the final price per unit
+                giaGoc: item.price,
+                giaBan: item.price,
                 thanhTien: item.price * item.quantity,
                 tenSanPhamSnapshot: item.name.split(' - ')[0],
                 skuSnapshot: item.name.split(' - ')[1] || item.name,
                 hinhAnhSnapshot: item.image,
-                serialNumberId: null, // IMPORTANT: Set to null
-                serialNumber: null,   // IMPORTANT: Set to null
+                serialNumberId: null,
+                serialNumber: null,
             })),
             nhanVienId: null,
         };
@@ -337,73 +503,143 @@ const placeOrder = async () => {
 </script>
 
 <template>
-    <div class="container mx-auto p-4">
-        <Toast />
-        <h1 class="text-3xl font-bold mb-6">Thanh toán</h1>
+    <div class="card max-w-7xl mx-auto px-4 py-8">
+        <Toast position="top-right" group="confirm" />
+        
+        <!-- Progress Indicator -->
+        <div class="mb-8">
+            <div class="flex items-center justify-between">
+                <div class="flex-1 text-center">
+                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary text-white">1</span>
+                    <p class="mt-2 text-sm font-medium text-surface-600">Giỏ hàng</p>
+                </div>
+                <div class="flex-1 border-t-2 border-primary"></div>
+                <div class="flex-1 text-center">
+                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary text-white">2</span>
+                    <p class="mt-2 text-sm font-medium text-surface-600">Thanh toán</p>
+                </div>
+                <div class="flex-1 border-t-2 border-surface-200"></div>
+                <div class="flex-1 text-center">
+                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-surface-200 text-surface-600">3</span>
+                    <p class="mt-2 text-sm font-medium text-surface-500">Hoàn tất</p>
+                </div>
+            </div>
+        </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div class="lg:col-span-2">
-                <Card class="mb-6">
-                    <template #title>Tóm tắt đơn hàng</template>
+        <h1 class="text-3xl font-bold mb-8 text-surface-800">Thanh toán đơn hàng</h1>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Left Column: Order Details, Delivery, Voucher, Payment -->
+            <div class="lg:col-span-2 space-y-6">
+                <!-- Order Summary -->
+                <Card class="card shadow-md border-surface-border">
+                    <template #title>
+                        <div class="flex items-center gap-2">
+                            <i class="pi pi-shopping-cart text-xl text-primary"></i>
+                            <span class="text-xl font-semibold">Tóm tắt đơn hàng</span>
+                        </div>
+                    </template>
                     <template #content>
-                        <div v-if="checkoutItems.length > 0">
-                            <div v-for="item in checkoutItems" :key="item.id" class="flex justify-between items-center py-2 border-b last:border-b-0">
-                                <div class="flex items-center">
-                                    <div>
-                                        <p class="font-semibold">{{ item.name }}</p>
-                                        <p class="text-sm text-gray-600">Số lượng: {{ item.quantity }}</p>
-                                    </div>
+                        <div v-if="checkoutItems.length > 0" class="space-y-4">
+                            <div v-for="item in checkoutItems" :key="item.variantId" class="flex items-center gap-4 py-3 border-b border-surface-200 last:border-b-0 min-h-[80px]">
+                                <div class="w-16 h-16 flex items-center justify-center">
+                                    <img v-if="item.image" :src="getProductImageUrl(item.image)" :alt="getProductImageUrl(item.image)" class="w-16 h-16 object-cover rounded-md border border-surface-border" />
+                                    <i v-else class="pi pi-image text-2xl text-surface-400"></i>
                                 </div>
-                                <p class="font-semibold">{{ formatCurrency(item.price * item.quantity) }}</p>
+                                <div class="flex-1">
+                                    <p class="font-medium text-surface-800 line-clamp-2">{{ item.name }}</p>
+                                    <p class="text-sm text-surface-500">Số lượng: {{ item.quantity }}</p>
+                                </div>
+                                <div class="flex items-center gap-4">
+                                    <p class="font-semibold text-surface-800">{{ formatCurrency(item.price * item.quantity) }}</p>
+                                    <Button
+                                        v-if="!isBuyNowFlow && localCheckoutItems.length > 1"
+                                        icon="pi pi-trash"
+                                        severity="danger"
+                                        text
+                                        rounded
+                                        @click="confirmRemoveItem(item.variantId)"
+                                        v-tooltip.top="'Xóa sản phẩm'"
+                                        class="hover:scale-110 transition-transform duration-200"
+                                    />
+                                </div>
                             </div>
-                            <div class="pt-4 mt-4 border-t space-y-2">
+                            <div class="pt-4 space-y-3 border-t border-surface-200">
                                 <div class="flex justify-between items-center">
-                                    <p>Tạm tính</p>
-                                    <p>{{ formatCurrency(itemsTotal) }}</p>
+                                    <span class="text-surface-600">Tạm tính</span>
+                                    <span>{{ formatCurrency(itemsTotal) }}</span>
                                 </div>
                                 <div class="flex justify-between items-center">
-                                    <p>Phí vận chuyển</p>
-                                    <p>{{ formatCurrency(consolidatedShippingFee) }}</p>
+                                    <span class="text-surface-600">Phí vận chuyển</span>
+                                    <span>{{ formatCurrency(consolidatedShippingFee) }}</span>
                                 </div>
                                 <div v-if="discountAmount > 0" class="flex justify-between items-center text-green-600">
-                                    <p>Giảm giá</p>
-                                    <p>-{{ formatCurrency(discountAmount) }}</p>
+                                    <span>Giảm giá</span>
+                                    <span>-{{ formatCurrency(discountAmount) }}</span>
                                 </div>
-                                <div class="flex justify-between items-center pt-2 mt-2 border-t">
-                                    <p class="text-xl font-bold">Tổng cộng:</p>
-                                    <p class="text-xl font-bold text-blue-600">{{ formatCurrency(totalPrice) }}</p>
+                                <div class="flex justify-between items-center pt-3 border-t border-surface-200">
+                                    <span class="text-lg font-semibold text-surface-800">Tổng cộng</span>
+                                    <span class="text-xl font-bold text-primary">{{ formatCurrency(totalPrice) }}</span>
                                 </div>
                             </div>
                         </div>
-                        <div v-else class="text-center text-gray-500">
+                        <div v-else class="text-center py-6 text-surface-500">
                             Giỏ hàng trống. Vui lòng thêm sản phẩm để thanh toán.
                         </div>
                     </template>
                 </Card>
 
-                <Card class="mb-6">
-                    <template #title>Thông tin giao hàng</template>
+                <!-- Delivery Information -->
+                <Card class="card shadow-md border-surface-border">
+                    <template #title>
+                        <div class="flex items-center gap-2">
+                            <i class="pi pi-map-marker text-xl text-primary"></i>
+                            <span class="text-xl font-semibold">Thông tin giao hàng</span>
+                        </div>
+                    </template>
                     <template #content>
-                        <div class="p-fluid grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div class="field">
-                                <label for="hoTen">Họ và tên</label>
-                                <InputText id="hoTen" v-model="customerInfo.hoTen" required />
+                        <div v-if="customerAddresses.length > 0" class="mb-6">
+                            <label for="existingAddress" class="block mb-2 font-medium text-surface-700">Chọn địa chỉ đã lưu</label>
+                            <Select
+                                id="existingAddress"
+                                v-model="selectedExistingAddressId"
+                                :options="customerAddresses"
+                                optionLabel="duong"
+                                optionValue="id"
+                                placeholder="Chọn địa chỉ đã lưu"
+                                class="w-full"
+                                @change="onExistingAddressSelect"
+                            >
+                                <template #option="slotProps">
+                                    <div class="flex flex-col py-2">
+                                        <span class="font-medium text-surface-800">{{ slotProps.option.duong }}</span>
+                                        <span class="text-sm text-surface-500">{{ slotProps.option.phuongXa }}, {{ slotProps.option.quanHuyen }}, {{ slotProps.option.tinhThanh }}</span>
+                                    </div>
+                                </template>
+                            </Select>
+                            <Button v-if="selectedExistingAddressId" label="Sử dụng địa chỉ mới" icon="pi pi-plus" text class="mt-3 text-primary" @click="clearSelectedAddress" />
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="space-y-2">
+                                <label for="hoTen" class="block text-sm font-medium text-surface-700">Họ và tên</label>
+                                <InputText id="hoTen" v-model="customerInfo.hoTen" class="w-full" required />
                             </div>
-                            <div class="field">
-                                <label for="soDienThoai">Số điện thoại</label>
-                                <InputText id="soDienThoai" v-model="customerInfo.soDienThoai" required />
+                            <div class="space-y-2">
+                                <label for="soDienThoai" class="block text-sm font-medium text-surface-700">Số điện thoại</label>
+                                <InputText id="soDienThoai" v-model="customerInfo.soDienThoai" class="w-full" required />
                             </div>
-                            <div class="field md:col-span-2">
-                                <label for="email">Email (Tùy chọn)</label>
-                                <InputText id="email" v-model="customerInfo.email" />
+                            <div class="space-y-2 md:col-span-2">
+                                <label for="email" class="block text-sm font-medium text-surface-700">Email (Tùy chọn)</label>
+                                <InputText id="email" v-model="customerInfo.email" class="w-full" />
                             </div>
-                            <div class="field md:col-span-2">
-                                <label for="duong">Địa chỉ đường (Số nhà, tên đường)</label>
-                                <InputText id="duong" v-model="addressData.duong" :class="{ 'p-invalid': addressErrors.duong }" required />
-                                <small v-if="addressErrors.duong" class="p-error">{{ addressErrors.duong }}</small>
+                            <div class="space-y-2 md:col-span-2">
+                                <label for="duong" class="block text-sm font-medium text-surface-700">Địa chỉ đường (Số nhà, tên đường)</label>
+                                <InputText id="duong" v-model="addressData.duong" :class="{ 'p-invalid': addressErrors.duong }" class="w-full" required />
+                                <small v-if="addressErrors.duong" class="text-red-500">{{ addressErrors.duong }}</small>
                             </div>
-                            <div class="field">
-                                <label for="tinhThanh">Tỉnh/Thành phố</label>
+                            <div class="space-y-2">
+                                <label for="tinhThanh" class="block text-sm font-medium text-surface-700">Tỉnh/Thành phố</label>
                                 <Select
                                     id="tinhThanh"
                                     v-model="selectedProvince"
@@ -411,14 +647,15 @@ const placeOrder = async () => {
                                     optionLabel="name"
                                     placeholder="Chọn tỉnh/thành phố"
                                     :class="{ 'p-invalid': addressErrors.tinhThanh }"
+                                    class="w-full"
                                     @change="onProvinceChange"
                                     :loading="loadingProvinces"
                                     required
                                 />
-                                <small v-if="addressErrors.tinhThanh" class="p-error">{{ addressErrors.tinhThanh }}</small>
+                                <small v-if="addressErrors.tinhThanh" class="text-red-500">{{ addressErrors.tinhThanh }}</small>
                             </div>
-                            <div class="field">
-                                <label for="quanHuyen">Quận/Huyện</label>
+                            <div class="space-y-2">
+                                <label for="quanHuyen" class="block text-sm font-medium text-surface-700">Quận/Huyện</label>
                                 <Select
                                     id="quanHuyen"
                                     v-model="selectedDistrict"
@@ -426,15 +663,16 @@ const placeOrder = async () => {
                                     optionLabel="name"
                                     placeholder="Chọn quận/huyện"
                                     :class="{ 'p-invalid': addressErrors.quanHuyen }"
+                                    class="w-full"
                                     @change="onDistrictChange"
                                     :disabled="!selectedProvince"
                                     :loading="loadingDistricts"
                                     required
                                 />
-                                <small v-if="addressErrors.quanHuyen" class="p-error">{{ addressErrors.quanHuyen }}</small>
+                                <small v-if="addressErrors.quanHuyen" class="text-red-500">{{ addressErrors.quanHuyen }}</small>
                             </div>
-                            <div class="field md:col-span-2">
-                                <label for="phuongXa">Phường/Xã</label>
+                            <div class="space-y-2 md:col-span-2">
+                                <label for="phuongXa" class="block text-sm font-medium text-surface-700">Phường/Xã</label>
                                 <Select
                                     id="phuongXa"
                                     v-model="selectedWard"
@@ -442,14 +680,15 @@ const placeOrder = async () => {
                                     optionLabel="name"
                                     placeholder="Chọn phường/xã"
                                     :class="{ 'p-invalid': addressErrors.phuongXa }"
+                                    class="w-full"
                                     :disabled="!selectedDistrict"
                                     :loading="loadingWards"
                                     required
                                 />
-                                <small v-if="addressErrors.phuongXa" class="p-error">{{ addressErrors.phuongXa }}</small>
+                                <small v-if="addressErrors.phuongXa" class="text-red-500">{{ addressErrors.phuongXa }}</small>
                             </div>
-                            <div class="field md:col-span-2">
-                                <label for="shippingFee">Phí vận chuyển</label>
+                            <div class="space-y-2 md:col-span-2">
+                                <label for="shippingFee" class="block text-sm font-medium text-surface-700">Phí vận chuyển</label>
                                 <InputNumber
                                     id="shippingFee"
                                     v-model="consolidatedShippingFee"
@@ -458,9 +697,10 @@ const placeOrder = async () => {
                                     locale="vi-VN"
                                     :disabled="isCalculatingShipping"
                                     :class="{ 'p-invalid': shippingError }"
+                                    class="w-full"
                                 />
-                                <small v-if="shippingError" class="p-error">{{ shippingError }}</small>
-                                <p v-if="estimatedDeliveryTime" class="text-sm text-gray-600 mt-1">
+                                <small v-if="shippingError" class="text-red-500">{{ shippingError }}</small>
+                                <p v-if="estimatedDeliveryTime" class="text-sm text-surface-500 mt-1">
                                     Thời gian giao hàng dự kiến: {{ estimatedDeliveryTime }}
                                 </p>
                             </div>
@@ -468,85 +708,106 @@ const placeOrder = async () => {
                     </template>
                 </Card>
 
-                <!-- Voucher/Discount Code -->
-                <Card class="mb-6">
-                    <template #title>Mã giảm giá</template>
+                <!-- Voucher Section -->
+                <Card class="card shadow-md border-surface-border">
+                    <template #title>
+                        <div class="flex items-center gap-2">
+                            <i class="pi pi-ticket text-xl text-primary"></i>
+                            <span class="text-xl font-semibold">Mã giảm giá</span>
+                        </div>
+                    </template>
                     <template #content>
                         <div v-if="!appliedVoucher">
-                            <div class="flex gap-2">
+                            <div class="flex gap-3 items-center">
                                 <InputText v-model="voucherCode" placeholder="Nhập mã giảm giá của bạn" class="flex-grow" @keyup.enter="applyVoucher" />
-                                <Button label="Áp dụng" @click="applyVoucher" :loading="isVoucherLoading" />
+                                <Button label="Áp dụng" icon="pi pi-check" class="p-button-outlined p-button-info" @click="applyVoucher" :loading="isVoucherLoading" />
                             </div>
-                            <small v-if="voucherError" class="p-error mt-2 block">{{ voucherError }}</small>
+                            <small v-if="voucherError" class="text-red-500 mt-2 block">{{ voucherError }}</small>
                         </div>
                         <div v-else>
-                            <div class="flex justify-between items-center p-3 bg-green-50 border border-green-200 rounded-lg">
+                            <div class="flex justify-between items-center p-4 bg-green-50 border border-green-200 rounded-lg">
                                 <div>
-                                    <p class="font-semibold text-green-800">Đã áp dụng mã: {{ appliedVoucher.voucher.maPhieuGiamGia }}</p>
+                                    <p class="font-medium text-green-800">Đã áp dụng mã: {{ appliedVoucher.voucher.maPhieuGiamGia }}</p>
                                     <p class="text-sm text-green-700">Bạn được giảm: {{ formatCurrency(appliedVoucher.discountAmount) }}</p>
                                 </div>
                                 <Button icon="pi pi-times" severity="danger" text rounded @click="removeVoucher" v-tooltip.top="'Gỡ bỏ mã'" />
                             </div>
                         </div>
+                        <div v-if="autoAppliedVoucher && appliedVoucher && autoAppliedVoucher.voucher.maPhieuGiamGia === appliedVoucher.voucher.maPhieuGiamGia" class="mt-3 text-sm text-green-600 flex items-center">
+                            <i class="pi pi-info-circle mr-2"></i>
+                            Voucher này được áp dụng tự động.
+                        </div>
                     </template>
                 </Card>
 
                 <!-- Payment Method -->
-                <Card>
-                    <template #title>Phương thức thanh toán</template>
+                <Card class="card shadow-md border-surface-border">
+                    <template #title>
+                        <div class="flex items-center gap-2">
+                            <i class="pi pi-credit-card text-xl text-primary"></i>
+                            <span class="text-xl font-semibold">Phương thức thanh toán</span>
+                        </div>
+                    </template>
                     <template #content>
-                        <div class="flex flex-col gap-3">
+                        <div class="space-y-4">
                             <div class="flex items-center">
                                 <RadioButton v-model="paymentMethod" inputId="cod" name="paymentMethod" value="COD" />
-                                <label for="cod" class="ml-2">Thanh toán khi nhận hàng (COD)</label>
+                                <label for="cod" class="ml-3 text-surface-700">Thanh toán khi nhận hàng (COD)</label>
                             </div>
                             <div class="flex items-center">
                                 <RadioButton v-model="paymentMethod" inputId="momo" name="paymentMethod" value="MOMO" />
-                                <label for="momo" class="ml-2">Thanh toán qua MoMo</label>
+                                <label for="momo" class="ml-3 text-surface-700">Thanh toán qua MoMo</label>
                             </div>
                             <div class="flex items-center">
                                 <RadioButton v-model="paymentMethod" inputId="vnpay" name="paymentMethod" value="VNPAY" />
-                                <label for="vnpay" class="ml-2">Thanh toán qua VNPay</label>
+                                <label for="vnpay" class="ml-3 text-surface-700">Thanh toán qua VNPay</label>
                             </div>
                         </div>
                     </template>
                 </Card>
             </div>
 
-            <!-- Place Order Button -->
+            <!-- Right Column: Order Summary and Place Order -->
             <div class="lg:col-span-1">
-                <Card>
-                    <template #title>Hoàn tất đơn hàng</template>
-                    <template #content>
-                        <div class="space-y-2 mb-4">
-                            <div class="flex justify-between items-center">
-                                <p>Tạm tính:</p>
-                                <p>{{ formatCurrency(itemsTotal) }}</p>
+                <div class="sticky top-4">
+                    <Card class="card shadow-md border-surface-border">
+                        <template #title>
+                            <div class="flex items-center gap-2">
+                                <i class="pi pi-wallet text-xl text-primary"></i>
+                                <span class="text-xl font-semibold">Hoàn tất đơn hàng</span>
                             </div>
-                            <div class="flex justify-between items-center">
-                                <p>Phí vận chuyển:</p>
-                                <p>{{ formatCurrency(consolidatedShippingFee) }}</p>
+                        </template>
+                        <template #content>
+                            <div class="space-y-3 mb-6">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-surface-600">Tạm tính</span>
+                                    <span>{{ formatCurrency(itemsTotal) }}</span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-surface-600">Phí vận chuyển</span>
+                                    <span>{{ formatCurrency(consolidatedShippingFee) }}</span>
+                                </div>
+                                <div v-if="discountAmount > 0" class="flex justify-between items-center text-green-600">
+                                    <span>Giảm giá</span>
+                                    <span>-{{ formatCurrency(discountAmount) }}</span>
+                                </div>
+                                <hr class="my-3 border-surface-200">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-lg font-semibold text-surface-800">Tổng cộng</span>
+                                    <span class="text-2xl font-bold text-primary">{{ formatCurrency(totalPrice) }}</span>
+                                </div>
                             </div>
-                            <div v-if="discountAmount > 0" class="flex justify-between items-center text-green-600">
-                                <p>Giảm giá:</p>
-                                <p>-{{ formatCurrency(discountAmount) }}</p>
-                            </div>
-                            <hr class="my-2">
-                            <div class="flex justify-between items-center">
-                                <p class="text-lg font-semibold">Tổng cộng:</p>
-                                <p class="text-2xl font-bold text-blue-600">{{ formatCurrency(totalPrice) }}</p>
-                            </div>
-                        </div>
-                        <Button
-                            label="Đặt hàng ngay"
-                            icon="pi pi-check"
-                            class="w-full p-button-success"
-                            @click="placeOrder"
-                            :loading="isSubmitting"
-                            :disabled="checkoutItems.length === 0 || isSubmitting"
-                        />
-                    </template>
-                </Card>
+                            <Button
+                                label="Đặt hàng ngay"
+                                icon="pi pi-check"
+                                class="w-full p-button-raised p-button-success"
+                                @click="placeOrder"
+                                :loading="isSubmitting"
+                                :disabled="checkoutItems.length === 0 || isSubmitting"
+                            />
+                        </template>
+                    </Card>
+                </div>
             </div>
         </div>
     </div>

@@ -219,6 +219,10 @@ c-320 15 -693 83 -1053 192 -277 84 -693 270 -945 423 -80 48 -95 62 -101 88
             <i class="pi pi-question-circle"></i>
             <span>Hỗ trợ</span>
           </router-link>
+          <router-link v-if="AuthService.isAuthenticated()" to="/shop/favorites" class="layout-topbar-action">
+            <i class="pi pi-heart"></i>
+            <span>Yêu thích</span>
+          </router-link>
           <button
             type="button"
             class="layout-topbar-action text-red-500 hover:text-red-600"

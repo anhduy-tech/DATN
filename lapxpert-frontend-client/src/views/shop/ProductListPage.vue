@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useProductStore } from '@/stores/productstore';
 import { useAttributeStore } from '@/stores/attributestore';
 import { useRouter, useRoute } from 'vue-router';
+import { useToast } from 'primevue/usetoast';
 import storageApi from '@/apis/storage';
 import inventoryApi from '@/apis/inventoryApi';
 import serialNumberApi from '@/apis/serialNumberApi';
@@ -17,13 +18,15 @@ import DataView from 'primevue/dataview';
 import SelectButton from 'primevue/selectbutton';
 import Badge from 'primevue/badge';
 import Tag from 'primevue/tag';
+import AuthService from '@/apis/auth'; // New import
+import FavoriteService from '@/apis/favorite'; // New import
 
 // Initialize stores and router
 const productStore = useProductStore();
 const attributeStore = useAttributeStore();
 const router = useRouter();
 const route = useRoute(); // Added to access query parameters
-
+const toast = useToast();
 // Reactive state
 const filters = ref({
   searchQuery: '',
@@ -36,6 +39,7 @@ const layoutOptions = ref(['list', 'grid']);
 const imageUrlCache = ref(new Map());
 const inventoryData = ref(new Map());
 const loading = ref(true);
+const favoritedProducts = ref(new Set()); // New ref for favorited products
 
 // Computed properties
 const categories = computed(() => attributeStore.danhMuc);
@@ -112,6 +116,56 @@ const hasActiveFilters = computed(() => {
   );
 });
 
+// New: Check all favorite statuses
+const checkAllFavoriteStatuses = async () => {
+  if (AuthService.isAuthenticated()) {
+    try {
+      const wishlist = await FavoriteService.getWishlist();
+      favoritedProducts.value = new Set(wishlist.map(item => item.sanPhamId));
+    } catch (err) {
+      console.error("Error fetching favorite products:", err);
+      favoritedProducts.value = new Set();
+    }
+  } else {
+    favoritedProducts.value = new Set();
+  }
+};
+
+// New: Toggle favorite status for a product
+const toggleFavorite = async (productItem) => {
+  if (!AuthService.isAuthenticated()) {
+    toast.add({ severity: 'warn', summary: 'Cảnh báo', detail: 'Vui lòng đăng nhập để thêm sản phẩm vào danh sách yêu thích.', life: 3000 });
+    router.push('/login');
+    return;
+  }
+
+  const user = AuthService.getUser();
+  if (!user || !user.id) {
+    toast.add({ severity: 'error', summary: 'Lỗi', detail: 'Không thể lấy thông tin người dùng. Vui lòng đăng nhập lại.', life: 3000 });
+    return;
+  }
+
+  try {
+    if (favoritedProducts.value.has(productItem.id)) {
+      await FavoriteService.removeProductFromWishlist(productItem.id);
+      favoritedProducts.value.delete(productItem.id);
+      toast.add({ severity: 'success', summary: 'Thành công', detail: 'Đã xóa sản phẩm khỏi danh sách yêu thích.', life: 3000 });
+    } else {
+      await FavoriteService.addProductToWishlist({
+        sanPhamId: productItem.id,
+        nguoiDungId: user.id,
+      });
+      favoritedProducts.value.add(productItem.id);
+      toast.add({ severity: 'success', summary: 'Thành công', detail: 'Đã thêm sản phẩm vào danh sách yêu thích.', life: 3000 });
+    }
+    // Force reactivity update for Set
+    favoritedProducts.value = new Set(favoritedProducts.value);
+  } catch (err) {
+    console.error("Error toggling favorite:", err);
+    toast.add({ severity: 'error', summary: 'Lỗi', detail: 'Không thể cập nhật danh sách yêu thích. Vui lòng thử lại.', life: 3000 });
+  }
+};
+
 // Methods
 const formatCurrency = (value) => {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value);
@@ -152,7 +206,7 @@ const loadImageUrl = async (imageFilename) => {
     imageUrlCache.value = new Map(imageUrlCache.value);
   } catch (error) {
     console.warn('Error getting presigned URL for image:', imageFilename, error);
-    imageUrlCache.value.set(imageFilename, 'https://via.placeholder.com/300');
+    imageUrlCache.value.set(imageFilename, 'https://via.placeholder.com/300'); // Ensure placeholder on error
   }
 };
 
@@ -269,6 +323,7 @@ const fetchData = async () => {
 
   filters.value.priceRange = [dynamicPricing.value.minPrice, dynamicPricing.value.maxPrice];
   loading.value = false;
+  await checkAllFavoriteStatuses(); // Call after data is loaded
 };
 
 // Fetch data and handle category query parameter on mount
@@ -446,7 +501,13 @@ watch(() => route.fullPath, fetchData);
                           </span>
                         </span>
                         <div class="flex flex-row-reverse md:flex-row gap-2">
-                          <Button icon="pi pi-heart" outlined></Button>
+                          <Button
+                            v-if="AuthService.isAuthenticated()"
+                            :icon="favoritedProducts.has(item.id) ? 'pi pi-heart-fill' : 'pi pi-heart'"
+                            :severity="favoritedProducts.has(item.id) ? 'danger' : 'secondary'"
+                            outlined
+                            @click="toggleFavorite(item)"
+                          />
                           <Button icon="pi pi-shopping-cart" label="Xem chi tiết" :disabled="getInventoryStatus(item) === 'OUTOFSTOCK'" class="flex-auto md:flex-initial whitespace-nowrap" @click="goToProductDetail(item.id)"></Button>
                         </div>
                       </div>
@@ -495,7 +556,13 @@ watch(() => route.fullPath, fetchData);
                         </span>
                         <div class="flex gap-2">
                           <Button icon="pi pi-shopping-cart" label="Xem chi tiết" :disabled="getInventoryStatus(item) === 'OUTOFSTOCK'" class="flex-auto whitespace-nowrap" @click="goToProductDetail(item.id)"></Button>
-                          <Button icon="pi pi-heart" outlined></Button>
+                          <Button
+                            v-if="AuthService.isAuthenticated()"
+                            :icon="favoritedProducts.has(item.id) ? 'pi pi-heart-fill' : 'pi pi-heart'"
+                            :severity="favoritedProducts.has(item.id) ? 'danger' : 'secondary'"
+                            outlined
+                            @click="toggleFavorite(item)"
+                          />
                         </div>
                       </div>
                     </div>

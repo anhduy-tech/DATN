@@ -101,6 +101,8 @@ c-320 15 -693 83 -1053 192 -277 84 -693 270 -945 423 -80 48 -95 62 -101 88
             class="text-gray-600 hover:text-primary-500 transition-colors duration-300">Sản phẩm</router-link>
           <router-link to="/shop/vouchers"
             class="text-gray-600 hover:text-primary-500 transition-colors duration-300">Phiếu giảm giá</router-link>
+          <router-link v-if="AuthService.isAuthenticated()" to="/shop/favorites"
+            class="text-gray-600 hover:text-primary-500 transition-colors duration-300">Yêu thích</router-link>
           <router-link to="/shop/support" class="text-gray-600 hover:text-primary-500 transition-colors duration-300">Hỗ
             trợ</router-link>
           <router-link to="/shop/support" class="text-gray-600 hover:text-primary-500 transition-colors duration-300">Về chúng tôi</router-link>
@@ -151,6 +153,8 @@ c-320 15 -693 83 -1053 192 -277 84 -693 270 -945 423 -80 48 -95 62 -101 88
           trợ</router-link>
         <router-link to="/shop/vouchers" class="text-gray-600 hover:text-primary-500"
           @click="isMenuOpen = false">Vouchers</router-link>
+        <router-link v-if="AuthService.isAuthenticated()" to="/shop/favorites" class="text-gray-600 hover:text-primary-500"
+          @click="isMenuOpen = false">Yêu thích</router-link>
       </nav>
     </div>
   </header>
@@ -163,6 +167,7 @@ import { useCartStore } from '@/stores/cartStore';
 import { useCustomerStore } from '@/stores/customerstore';
 import Menu from 'primevue/menu';
 import Button from 'primevue/button';
+import AuthService from '@/apis/auth'; // New import
 
 const router = useRouter();
 const cartStore = useCartStore();
@@ -183,6 +188,13 @@ const userMenuItems = ref([
     icon: 'pi pi-user',
     command: () => {
       router.push('/shop/profile');
+    }
+  },
+  { // New: Order History
+    label: 'Lịch sử đơn hàng',
+    icon: 'pi pi-history',
+    command: () => {
+      router.push('/shop/orders');
     }
   }
 ]);

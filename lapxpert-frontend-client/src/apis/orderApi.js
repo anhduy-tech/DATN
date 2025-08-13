@@ -433,6 +433,28 @@ const orderApi = {
   },
 
   /**
+   * Get orders for the authenticated user
+   * @returns {Promise<Object>} API response with orders data
+   */
+  async getMyOrders() {
+    try {
+      const response = await privateApi.get(`${ORDER_BASE_URL}/me`);
+      return {
+        success: true,
+        data: response.data,
+        message: 'User orders fetched successfully'
+      };
+    } catch (error) {
+      console.error('Error fetching user orders:', error);
+      return {
+        success: false,
+        data: null,
+        message: error.response?.data?.message || error.message || 'Failed to fetch user orders'
+      };
+    }
+  },
+
+  /**
    * Get receipt preview data
    * @param {number} orderId - Order ID
    * @returns {Promise<Object>} API response with receipt preview data

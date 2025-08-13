@@ -277,9 +277,9 @@
                         </div>
 
                         <!-- No serial numbers available -->
-                        <div v-else class="flex items-center gap-2">
+                        <!-- <div v-else class="flex items-center gap-2">
                           <span class="text-xs text-surface-500 italic">Không có serial number</span>
-                        </div>
+                        </div> -->
                       </div>
                     </div>
                   </div>

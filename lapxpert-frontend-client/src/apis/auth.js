@@ -52,7 +52,6 @@ const AuthService = {
     const token = localStorage.getItem("token");
     if (!token) return false;
 
-    // Check if token is expired
     if (isTokenExpired(token)) {
       this.logout();
       return false;

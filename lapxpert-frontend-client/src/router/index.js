@@ -63,10 +63,22 @@ const router = createRouter({
           name: 'shop-profile',
           component: () => import('@/views/shop/ProfilePage.vue'),
         },
+        { // New route for Order History
+          path: 'orders',
+          name: 'shop-order-history',
+          component: () => import('@/views/shop/OrderHistoryPage.vue'),
+          meta: { requiresAuth: true } // Only logged-in users can view their order history
+        },
         {
           path: 'vouchers',
           name: 'shop-vouchers',
           component: () => import('@/views/shop/VoucherListPage.vue'),
+        },
+        { // New route for Favorite List
+          path: 'favorites',
+          name: 'shop-favorites',
+          component: () => import('@/views/shop/FavoriteListPage.vue'),
+          meta: { requiresAuth: true } // Ensure only logged-in users can access
         },
         {
           path: '/websocket-test',

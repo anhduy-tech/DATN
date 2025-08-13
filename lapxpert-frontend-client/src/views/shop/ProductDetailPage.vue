@@ -43,20 +43,32 @@
             @click="selectedImage = image"
           />
         </div>
-        <p v-else class="text-surface-500 text-sm">Chưa có hình ảnh sản phẩm</p>
       </div>
 
       <!-- Product Details -->
       <div class="space-y-6">
         <!-- Product Name and Brand -->
-        <div>
-          <h1 class="text-3xl font-bold text-surface-900">{{ product.tenSanPham || 'Sản phẩm không tên' }}</h1>
-          <p class="text-lg text-surface-600">
-            Thương hiệu: {{ product.thuongHieu?.moTaThuongHieu || 'Chưa có thương hiệu' }}
-          </p>
-          <p class="text-sm text-surface-500">
-            Mã sản phẩm: {{ product.maSanPham || 'Chưa có mã' }}
-          </p>
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-3xl font-bold text-surface-900">{{ product.tenSanPham || 'Sản phẩm không tên' }}</h1>
+            <p class="text-lg text-surface-600">
+              Thương hiệu: {{ product.thuongHieu?.moTaThuongHieu || 'Chưa có thương hiệu' }}
+            </p>
+            <p class="text-sm text-surface-500">
+              Mã sản phẩm: {{ product.maSanPham || 'Chưa có mã' }}
+            </p>
+          </div>
+          <!-- Favorite Button -->
+          <Button
+            v-if="AuthService.isAuthenticated()"
+            :icon="isFavorited ? 'pi pi-heart-fill' : 'pi pi-heart'"
+            :severity="isFavorited ? 'danger' : 'secondary'"
+            rounded
+            outlined
+            @click="toggleFavorite"
+            class="ml-4"
+            v-tooltip.top="isFavorited ? 'Xóa khỏi yêu thích' : 'Thêm vào yêu thích'"
+          />
         </div>
 
         <!-- Categories -->
@@ -210,14 +222,6 @@
 
         </div>
       </div>
-      <div class="text-center mt-6">
-        <router-link
-          :to="{ name: 'shop-products' }"
-          class="text-primary-600 font-medium hover:underline"
-        >
-          Xem thêm sản phẩm
-        </router-link>
-      </div>
     </div>
   </div>
 </template>
@@ -230,6 +234,9 @@ import { useProductStore } from '@/stores/productstore'
 import { useCartStore } from '@/stores/cartStore'
 import storageApi from '@/apis/storage'
 import inventoryApi from '@/apis/inventoryApi';
+import AuthService from '@/apis/auth'; 
+import FavoriteService from '@/apis/favorite';
+import ReviewDialog from '@/components/common/ReviewDialog.vue'; 
 
 const route = useRoute()
 const router = useRouter()
@@ -246,6 +253,9 @@ const selectedImage = ref(null)
 const imageUrlCache = ref(new Map())
 const quantity = ref(1)
 const availableInventory = ref(0);
+const isFavorited = ref(false);
+
+
 
 // Watch for route param changes to reload product
 watch(() => route.params.id, async (newId, oldId) => {
@@ -263,6 +273,53 @@ const relatedProducts = computed(() => {
                 p.danhMucs?.some(dm => currentCategoryIds.includes(dm.id)))
     .slice(0, 8) // Limit to 8 products
 })
+
+// New: Check favorite status
+const checkFavoriteStatus = async () => {
+  if (AuthService.isAuthenticated() && product.value?.id) {
+    try {
+      isFavorited.value = await FavoriteService.checkProductInWishlist(product.value.id);
+    } catch (err) {
+      console.error("Error checking favorite status:", err);
+      isFavorited.value = false;
+    }
+  } else {
+    isFavorited.value = false;
+  }
+};
+
+// New: Toggle favorite status
+const toggleFavorite = async () => {
+  if (!AuthService.isAuthenticated()) {
+    toast.add({ severity: 'warn', summary: 'Cảnh báo', detail: 'Vui lòng đăng nhập để thêm sản phẩm vào danh sách yêu thích.', life: 3000 });
+    router.push('/login');
+    return;
+  }
+
+  const user = AuthService.getUser();
+  if (!user || !user.id) {
+    toast.add({ severity: 'error', summary: 'Lỗi', detail: 'Không thể lấy thông tin người dùng. Vui lòng đăng nhập lại.', life: 3000 });
+    return;
+  }
+
+  try {
+    if (isFavorited.value) {
+      await FavoriteService.removeProductFromWishlist(product.value.id);
+      toast.add({ severity: 'success', summary: 'Thành công', detail: 'Đã xóa sản phẩm khỏi danh sách yêu thích.', life: 3000 });
+    } else {
+      await FavoriteService.addProductToWishlist({
+        sanPhamId: product.value.id,
+        nguoiDungId: user.id,
+      });
+      toast.add({ severity: 'success', summary: 'Thành công', detail: 'Đã thêm sản phẩm vào danh sách yêu thích.', life: 3000 });
+    }
+    isFavorited.value = !isFavorited.value; // Toggle status after successful operation
+  } catch (err) {
+    console.error("Error toggling favorite:", err);
+    toast.add({ severity: 'error', summary: 'Lỗi', detail: 'Không thể cập nhật danh sách yêu thích. Vui lòng thử lại.', life: 3000 });
+  }
+};
+
 
 // Methods
 const formatCurrency = (amount) => {
@@ -287,25 +344,25 @@ const getStorageDescription = (variant) => {
 }
 
 const getProductImage = (imageFilename) => {
-  if (!imageFilename) return null
-  if (imageFilename.startsWith('http')) return imageFilename
+  if (!imageFilename) return '/placeholder-product.png'; // Return placeholder immediately
+  if (imageFilename.startsWith('http')) return imageFilename;
   if (imageUrlCache.value.has(imageFilename)) {
-    return imageUrlCache.value.get(imageFilename)
+    return imageUrlCache.value.get(imageFilename);
   }
-  loadProductImageUrl(imageFilename)
-  return null
-}
+  loadProductImageUrl(imageFilename);
+  return '/placeholder-product.png'; // Return placeholder while loading
+};
 
 const loadProductImageUrl = async (imageFilename) => {
   try {
-    const presignedUrl = await storageApi.getPresignedUrl('products', imageFilename)
-    imageUrlCache.value.set(imageFilename, presignedUrl)
-    imageUrlCache.value = new Map(imageUrlCache.value)
+    const presignedUrl = await storageApi.getPresignedUrl('products', imageFilename);
+    imageUrlCache.value.set(imageFilename, presignedUrl);
+    imageUrlCache.value = new Map(imageUrlCache.value);
   } catch (error) {
-    console.warn('Error getting presigned URL for product image:', imageFilename, error)
-    imageUrlCache.value.set(imageFilename, null)
+    console.warn('Error getting presigned URL for product image:', imageFilename, error);
+    imageUrlCache.value.set(imageFilename, '/placeholder-product.png'); // Set to placeholder on error
   }
-}
+};
 
 const getProductPrice = (product) => {
   if (!product?.sanPhamChiTiets?.length) return null
@@ -336,6 +393,7 @@ const loadProduct = async () => {
       }
     }
     console.log('Loaded product:', product.value)
+    await checkFavoriteStatus(); // Call checkFavoriteStatus here
   } catch (err) {
     error.value = err.message || 'Lỗi tải dữ liệu sản phẩm'
     toast.add({
