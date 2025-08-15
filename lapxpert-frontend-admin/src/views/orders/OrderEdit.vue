@@ -4208,6 +4208,186 @@ const calculateVoucherDiscount = (voucher, orderTotal = null) => {
 }
 
 /**
+ * Enhanced voucher revalidation specifically for order updates
+ * Handles quantity management, concurrent modifications, and update-specific validation
+ * @param {Object} appliedVoucher - The currently applied voucher
+ * @param {number} customerId - Customer ID
+ * @param {number} orderTotal - Order total amount
+ * @param {Object} updateContext - Additional context for order updates
+ * @returns {Promise<Object>} Result object with proceed flag and updated discount
+ */
+const revalidateAppliedVoucherForUpdate = async (appliedVoucher, customerId, orderTotal, updateContext = {}) => {
+  try {
+    console.log('🔄 [VOUCHER UPDATE] Starting voucher revalidation for order update...', {
+      voucherCode: appliedVoucher.maPhieuGiamGia,
+      originalDiscount: appliedVoucher.giaTriGiam,
+      newOrderTotal: orderTotal,
+      updateContext
+    })
+
+    const originalDiscount = appliedVoucher.giaTriGiam
+
+    // ENHANCEMENT: Check for concurrent voucher modifications
+    if (updateContext.checkConcurrentModifications) {
+      try {
+        const currentVoucherResponse = await voucherApi.getVoucherByCode(appliedVoucher.maPhieuGiamGia)
+        if (currentVoucherResponse.success && currentVoucherResponse.data) {
+          const currentVoucher = currentVoucherResponse.data
+
+          // Check if voucher has been modified since order was loaded
+          if (currentVoucher.ngayCapNhat && appliedVoucher.ngayCapNhat) {
+            const currentModified = new Date(currentVoucher.ngayCapNhat)
+            const originalModified = new Date(appliedVoucher.ngayCapNhat)
+
+            if (currentModified > originalModified) {
+              console.warn('⚠️ [VOUCHER UPDATE] Voucher has been modified concurrently', {
+                voucherCode: appliedVoucher.maPhieuGiamGia,
+                originalModified: originalModified.toISOString(),
+                currentModified: currentModified.toISOString()
+              })
+
+              // Show user notification about concurrent modification
+              toast.add({
+                severity: 'warn',
+                summary: 'Voucher đã được cập nhật',
+                detail: `Voucher ${appliedVoucher.maPhieuGiamGia} đã được cập nhật bởi người khác. Hệ thống sẽ sử dụng phiên bản mới nhất.`,
+                life: 5000
+              })
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ [VOUCHER UPDATE] Could not check for concurrent modifications:', error)
+        // Continue with revalidation even if concurrent check fails
+      }
+    }
+
+    // Re-validate the applied voucher with API
+    const validationResponse = await voucherApi.validateVoucher(
+      appliedVoucher.maPhieuGiamGia,
+      customerId,
+      orderTotal,
+    )
+
+    if (!validationResponse.success || !validationResponse.data.valid) {
+      console.error('❌ [VOUCHER UPDATE] Voucher validation failed:', validationResponse.data.error)
+
+      // Enhanced error handling for update context
+      const errorMessage = updateContext.isAutomaticRevalidation
+        ? `Voucher ${appliedVoucher.maPhieuGiamGia} không còn hợp lệ với đơn hàng đã cập nhật. Voucher sẽ được gỡ bỏ tự động.`
+        : `Voucher ${appliedVoucher.maPhieuGiamGia} không còn hợp lệ. Vui lòng chọn voucher khác.`
+
+      toast.add({
+        severity: 'error',
+        summary: 'Voucher không hợp lệ',
+        detail: errorMessage,
+        life: 5000,
+      })
+
+      // Auto-remove invalid voucher in update context
+      if (updateContext.isAutomaticRevalidation) {
+        currentOrder.value.voucherList = []
+        await loadAvailableVouchers()
+      }
+
+      return { proceed: false, reason: 'invalid_voucher' }
+    }
+
+    const validatedDiscount = validationResponse.data.discountAmount
+
+    // ENHANCEMENT: Handle quantity management for order updates
+    if (updateContext.handleQuantityAdjustment && validationResponse.data.voucher) {
+      const updatedVoucher = validationResponse.data.voucher
+
+      // Check if voucher quantity has changed
+      if (updatedVoucher.soLuong !== appliedVoucher.soLuong) {
+        console.log('📊 [VOUCHER UPDATE] Voucher quantity changed:', {
+          voucherCode: appliedVoucher.maPhieuGiamGia,
+          originalQuantity: appliedVoucher.soLuong,
+          currentQuantity: updatedVoucher.soLuong
+        })
+
+        // Update voucher quantity in current order
+        appliedVoucher.soLuong = updatedVoucher.soLuong
+
+        toast.add({
+          severity: 'info',
+          summary: 'Cập nhật số lượng voucher',
+          detail: `Số lượng voucher ${appliedVoucher.maPhieuGiamGia} đã được cập nhật thành ${updatedVoucher.soLuong}.`,
+          life: 4000
+        })
+      }
+    }
+
+    // Check if voucher discount value has changed
+    if (validatedDiscount !== originalDiscount) {
+      console.log('💰 [VOUCHER UPDATE] Discount value changed:', {
+        voucherCode: appliedVoucher.maPhieuGiamGia,
+        originalDiscount,
+        validatedDiscount,
+        isAutomaticRevalidation: updateContext.isAutomaticRevalidation
+      })
+
+      // Enhanced confirmation dialog for update context
+      const confirmationMessage = updateContext.isAutomaticRevalidation
+        ? `Giá trị giảm của voucher ${appliedVoucher.maPhieuGiamGia} đã thay đổi từ ${formatCurrency(originalDiscount)} thành ${formatCurrency(validatedDiscount)} do cập nhật đơn hàng. Bạn có muốn tiếp tục với giá trị mới không?`
+        : `Giá trị giảm của voucher ${appliedVoucher.maPhieuGiamGia} đã thay đổi từ ${formatCurrency(originalDiscount)} thành ${formatCurrency(validatedDiscount)}. Bạn có muốn tiếp tục với giá trị mới không?`
+
+      const confirmed = await new Promise((resolve) => {
+        confirm.require({
+          message: confirmationMessage,
+          header: 'Cập nhật giá trị Voucher',
+          icon: 'pi pi-info-circle',
+          acceptLabel: 'Đồng ý',
+          rejectLabel: 'Để tôi chọn lại',
+          accept: () => resolve(true),
+          reject: () => resolve(false),
+          onHide: () => resolve(false),
+        })
+      })
+
+      if (confirmed) {
+        currentOrder.value.voucherList[0].giaTriGiam = validatedDiscount
+        calculateCurrentOrderTotals()
+
+        console.log('✅ [VOUCHER UPDATE] Discount value updated successfully')
+        return { proceed: true, validatedDiscount, discountChanged: true }
+      } else {
+        currentOrder.value.voucherList = []
+        await loadAvailableVouchers()
+
+        console.log('🔄 [VOUCHER UPDATE] User rejected discount change, voucher removed')
+        return { proceed: false, reason: 'user_rejected_discount_change' }
+      }
+    }
+
+    console.log('✅ [VOUCHER UPDATE] Voucher revalidation completed successfully')
+    return { proceed: true, validatedDiscount, discountChanged: false }
+  } catch (error) {
+    console.error('❌ [VOUCHER UPDATE] Error revalidating applied voucher:', error)
+
+    const errorMessage = updateContext.isAutomaticRevalidation
+      ? 'Không thể xác thực voucher sau khi cập nhật đơn hàng. Voucher sẽ được gỡ bỏ tạm thời.'
+      : 'Không thể xác thực voucher tại thời điểm này. Vui lòng thử lại.'
+
+    toast.add({
+      severity: 'error',
+      summary: 'Lỗi xác thực voucher',
+      detail: errorMessage,
+      life: 5000,
+    })
+
+    // Auto-remove voucher on error in automatic revalidation
+    if (updateContext.isAutomaticRevalidation) {
+      currentOrder.value.voucherList = []
+      await loadAvailableVouchers()
+    }
+
+    return { proceed: false, reason: 'validation_error', error }
+  }
+}
+
+/**
  * Revalidate applied voucher and handle discount value changes (Step 2 from validateVouchersBeforePayment)
  * @param {Object} appliedVoucher - The currently applied voucher
  * @param {number} customerId - Customer ID
@@ -4328,6 +4508,126 @@ const detectBetterVouchers = async (appliedVoucher, customerId, orderTotal, curr
     console.error('Error detecting better vouchers:', error)
     // Don't fail the entire process for better voucher detection errors
     return { proceed: true }
+  }
+}
+
+/**
+ * Revalidate all applied vouchers after order modifications
+ * Handles automatic voucher revalidation when order content changes
+ * @param {Object} modificationContext - Context about what was modified
+ * @returns {Promise<Object>} Result object with revalidation status
+ */
+const revalidateVouchersAfterOrderUpdate = async (modificationContext = {}) => {
+  console.log('🔄 [VOUCHER REVALIDATION] Starting voucher revalidation after order update...', modificationContext)
+
+  // If no vouchers are applied, skip revalidation
+  if (!currentOrder.value?.voucherList?.length) {
+    console.log('ℹ️ [VOUCHER REVALIDATION] No vouchers to revalidate')
+    return { success: true, revalidated: 0 }
+  }
+
+  const appliedVouchers = [...currentOrder.value.voucherList]
+  const orderTotal = currentOrder.value.tongTienHang || 0
+  const customerId = currentOrder.value.khachHang?.id || null
+
+  if (!customerId || orderTotal <= 0) {
+    console.warn('⚠️ [VOUCHER REVALIDATION] Invalid order context for revalidation')
+    return { success: false, reason: 'invalid_order_context' }
+  }
+
+  let revalidationResults = []
+  let hasFailures = false
+
+  try {
+    // Process each applied voucher
+    for (const [index, voucher] of appliedVouchers.entries()) {
+      console.log(`🎫 [VOUCHER REVALIDATION] Processing voucher ${index + 1}/${appliedVouchers.length}: ${voucher.maPhieuGiamGia}`)
+
+      const updateContext = {
+        isAutomaticRevalidation: true,
+        checkConcurrentModifications: true,
+        handleQuantityAdjustment: true,
+        modificationContext
+      }
+
+      const result = await revalidateAppliedVoucherForUpdate(voucher, customerId, orderTotal, updateContext)
+
+      revalidationResults.push({
+        voucherCode: voucher.maPhieuGiamGia,
+        success: result.proceed,
+        reason: result.reason,
+        discountChanged: result.discountChanged
+      })
+
+      if (!result.proceed) {
+        hasFailures = true
+        console.warn(`⚠️ [VOUCHER REVALIDATION] Voucher ${voucher.maPhieuGiamGia} failed revalidation:`, result.reason)
+      }
+    }
+
+    // Summary logging
+    const successCount = revalidationResults.filter(r => r.success).length
+    const failureCount = revalidationResults.filter(r => !r.success).length
+    const discountChangedCount = revalidationResults.filter(r => r.discountChanged).length
+
+    console.log('📊 [VOUCHER REVALIDATION] Revalidation summary:', {
+      total: appliedVouchers.length,
+      successful: successCount,
+      failed: failureCount,
+      discountChanged: discountChangedCount,
+      results: revalidationResults
+    })
+
+    // Show summary notification if there were changes
+    if (failureCount > 0 || discountChangedCount > 0) {
+      let summaryMessage = ''
+
+      if (failureCount > 0) {
+        summaryMessage += `${failureCount} voucher không còn hợp lệ và đã được gỡ bỏ. `
+      }
+
+      if (discountChangedCount > 0) {
+        summaryMessage += `${discountChangedCount} voucher có giá trị giảm đã thay đổi. `
+      }
+
+      toast.add({
+        severity: hasFailures ? 'warn' : 'info',
+        summary: 'Cập nhật voucher',
+        detail: summaryMessage.trim(),
+        life: 6000
+      })
+    }
+
+    // Refresh available vouchers if any vouchers were removed
+    if (failureCount > 0) {
+      await loadAvailableVouchers()
+    }
+
+    return {
+      success: true,
+      revalidated: appliedVouchers.length,
+      successful: successCount,
+      failed: failureCount,
+      discountChanged: discountChangedCount,
+      results: revalidationResults
+    }
+
+  } catch (error) {
+    console.error('❌ [VOUCHER REVALIDATION] Error during voucher revalidation:', error)
+
+    toast.add({
+      severity: 'error',
+      summary: 'Lỗi xác thực voucher',
+      detail: 'Không thể xác thực voucher sau khi cập nhật đơn hàng. Vui lòng kiểm tra lại.',
+      life: 5000
+    })
+
+    return {
+      success: false,
+      reason: 'revalidation_error',
+      error,
+      results: revalidationResults
+    }
   }
 }
 
@@ -4477,6 +4777,34 @@ const addVariantToCurrentOrder = async (variantData) => {
 
   detectSameSKUPriceDifferences(newCartItem)
 
+  // VOUCHER REVALIDATION: Revalidate vouchers after adding product
+  if (currentOrder.value.voucherList?.length > 0) {
+    console.log('🎫 [PRODUCT ADD] Triggering voucher revalidation after product addition...')
+
+    const modificationContext = {
+      productAdded: true,
+      productInfo: {
+        sku: sanPhamChiTiet.sku,
+        tenSanPham: sanPhamChiTiet.tenSanPham,
+        donGia,
+        soLuong
+      },
+      orderTotalChange: {
+        before: currentOrder.value.tongTienHang - thanhTien,
+        after: currentOrder.value.tongTienHang
+      }
+    }
+
+    // Use setTimeout to avoid blocking UI and allow totals to update
+    setTimeout(async () => {
+      try {
+        await revalidateVouchersAfterOrderUpdate(modificationContext)
+      } catch (error) {
+        console.error('❌ [PRODUCT ADD] Voucher revalidation failed:', error)
+      }
+    }, 200)
+  }
+
   setTimeout(() => {
     syncCartWithDialog()
   }, 100)
@@ -4616,6 +4944,34 @@ const removeFromCurrentOrder = async (index) => {
 
   currentOrder.value.sanPhamList.splice(index, 1)
   calculateCurrentOrderTotals()
+
+  // VOUCHER REVALIDATION: Revalidate vouchers after removing product
+  if (currentOrder.value.voucherList?.length > 0) {
+    console.log('🎫 [PRODUCT REMOVE] Triggering voucher revalidation after product removal...')
+
+    const modificationContext = {
+      productRemoved: true,
+      productInfo: {
+        sku: item.sanPhamChiTiet?.sku,
+        tenSanPham: item.sanPhamChiTiet?.tenSanPham,
+        donGia: item.donGia,
+        soLuong: item.soLuong
+      },
+      orderTotalChange: {
+        before: currentOrder.value.tongTienHang + (item.thanhTien || 0),
+        after: currentOrder.value.tongTienHang
+      }
+    }
+
+    // Use setTimeout to avoid blocking UI and allow totals to update
+    setTimeout(async () => {
+      try {
+        await revalidateVouchersAfterOrderUpdate(modificationContext)
+      } catch (error) {
+        console.error('❌ [PRODUCT REMOVE] Voucher revalidation failed:', error)
+      }
+    }, 200)
+  }
 
   // Sync with product variant dialog to update stock counts
   // Add small delay to prevent race condition with immediate serial tracking
@@ -4971,11 +5327,37 @@ const onCustomerSelect = async (event) => {
     const customerWithAddresses = await customerStore.fetchCustomerById(event.value.id)
     console.log('Customer data with addresses loaded:', customerWithAddresses)
 
+    const previousCustomerId = currentOrder.value.khachHang?.id
+
     updateCurrentOrderData({
       khachHang: customerWithAddresses,
       diaChiGiaoHang: null, // Clear any previously selected address
     })
     selectedCustomer.value = customerWithAddresses
+
+    // VOUCHER REVALIDATION: Revalidate vouchers after customer change
+    if (currentOrder.value.voucherList?.length > 0 && previousCustomerId !== customerWithAddresses.id) {
+      console.log('🎫 [CUSTOMER CHANGE] Triggering voucher revalidation after customer change...')
+
+      const modificationContext = {
+        customerChanged: true,
+        customerInfo: {
+          previousCustomerId,
+          newCustomerId: customerWithAddresses.id,
+          previousCustomerName: currentOrder.value.khachHang?.hoTen,
+          newCustomerName: customerWithAddresses.hoTen
+        }
+      }
+
+      // Revalidate vouchers with new customer context
+      setTimeout(async () => {
+        try {
+          await revalidateVouchersAfterOrderUpdate(modificationContext)
+        } catch (error) {
+          console.error('❌ [CUSTOMER CHANGE] Voucher revalidation failed:', error)
+        }
+      }, 100)
+    }
 
     // Load available vouchers for the selected customer
     await loadAvailableVouchers()
@@ -4983,11 +5365,40 @@ const onCustomerSelect = async (event) => {
     console.error('Error loading customer details:', error)
     // Fallback to the basic customer data from search
     console.log('Using fallback customer data:', event.value)
+
+    const previousCustomerId = currentOrder.value.khachHang?.id
+
     updateCurrentOrderData({
       khachHang: event.value,
       diaChiGiaoHang: null, // Clear any previously selected address
     })
     selectedCustomer.value = event.value
+
+    // VOUCHER REVALIDATION: Revalidate vouchers after customer change (fallback case)
+    if (currentOrder.value.voucherList?.length > 0 && previousCustomerId !== event.value.id) {
+      console.log('🎫 [CUSTOMER CHANGE FALLBACK] Triggering voucher revalidation after customer change...')
+
+      const modificationContext = {
+        customerChanged: true,
+        customerInfo: {
+          previousCustomerId,
+          newCustomerId: event.value.id,
+          previousCustomerName: currentOrder.value.khachHang?.hoTen,
+          newCustomerName: event.value.hoTen
+        },
+        fallbackCase: true
+      }
+
+      // Revalidate vouchers with new customer context
+      setTimeout(async () => {
+        try {
+          await revalidateVouchersAfterOrderUpdate(modificationContext)
+        } catch (error) {
+          console.error('❌ [CUSTOMER CHANGE FALLBACK] Voucher revalidation failed:', error)
+        }
+      }, 100)
+    }
+
     await loadAvailableVouchers()
   }
 }
@@ -5466,6 +5877,9 @@ const onDeliveryToggle = () => {
   if (!currentOrder.value.giaohang) {
     // Clear address when delivery is turned off
     updateCurrentOrderData({ diaChiGiaoHang: null })
+
+    // SCHEMA-FREE FIX: Clear all recipient information when delivery is disabled
+    clearRecipientInfo()
   } else {
     // When delivery is turned on, validate current address selection
     if (currentOrder.value.diaChiGiaoHang && currentOrder.value.khachHang) {
@@ -6347,6 +6761,37 @@ const performOrderCreation = async () => {
     })
     console.log('Updating order with data:', updateData)
     console.log('Current order data:', currentOrder.value);
+
+    // VOUCHER REVALIDATION: Revalidate vouchers before order update
+    console.log('🎫 [ORDER UPDATE] Starting voucher revalidation before order update...')
+
+    const modificationContext = {
+      orderUpdate: true,
+      hasProductChanges: updateData.chiTiet && updateData.chiTiet.length !== currentOrder.value.sanPhamList?.length,
+      hasCustomerChanges: updateData.khachHangId !== currentOrder.value.khachHang?.id,
+      hasTotalChanges: updateData.tongTienHang !== currentOrder.value.tongTienHang,
+      updateData: {
+        originalTotal: currentOrder.value.tongTienHang,
+        newTotal: updateData.tongTienHang,
+        originalCustomerId: currentOrder.value.khachHang?.id,
+        newCustomerId: updateData.khachHangId
+      }
+    }
+
+    const voucherRevalidationResult = await revalidateVouchersAfterOrderUpdate(modificationContext)
+
+    if (!voucherRevalidationResult.success) {
+      console.error('❌ [ORDER UPDATE] Voucher revalidation failed, aborting order update')
+      toast.add({
+        severity: 'error',
+        summary: 'Lỗi xác thực voucher',
+        detail: 'Không thể xác thực voucher với thông tin đơn hàng mới. Vui lòng kiểm tra lại voucher.',
+        life: 5000
+      })
+      return false
+    }
+
+    console.log('✅ [ORDER UPDATE] Voucher revalidation completed successfully:', voucherRevalidationResult)
 
     // Update order using orderStore updateOrder method
     const result = await updateOrder(currentOrder.value.id, updateData)

@@ -377,13 +377,9 @@ const orderApi = {
    * @param {string} reason - Refund reason
    * @returns {Promise<Object>} API response with refund data
    */
-  async processRefund(orderId, refundAmount, reason) {
+  async processRefund(orderId) {
     try {
-      const response = await privateApi.post(`${ORDER_BASE_URL}/${orderId}/refund`, {
-        soTienHoan: refundAmount,
-        lyDoHoan: reason
-      })
-
+      const response = await privateApi.put(`${ORDER_BASE_URL}/${orderId}/refund`)
       return {
         success: true,
         data: response.data,
@@ -406,16 +402,11 @@ const orderApi = {
    * @param {string} note - Optional note
    * @returns {Promise<Object>} API response with updated order data
    */
-  async updatePaymentStatus(orderId, paymentStatus, note = '') {
+  async updatePaymentStatus(orderId, paymentStatus) {
     try {
       const params = new URLSearchParams()
-      params.append('trangThaiThanhToan', paymentStatus)
-      if (note) {
-        params.append('ghiChu', note)
-      }
-
-      const response = await privateApi.put(`${ORDER_BASE_URL}/${orderId}/payment-status?${params.toString()}`)
-
+      params.append('trangThaiCongNo', paymentStatus)
+      const response = await privateApi.put(`${ORDER_BASE_URL}/${orderId}/update-cong-no?${params.toString()}`)
       return {
         success: true,
         data: response.data,

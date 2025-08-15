@@ -52,4 +52,7 @@ public class HoaDonDto {
 
     // Voucher fields for order creation
     private List<String> voucherCodes; // List of voucher codes to apply
+
+    private String trangThaiCongNo;
+
 }

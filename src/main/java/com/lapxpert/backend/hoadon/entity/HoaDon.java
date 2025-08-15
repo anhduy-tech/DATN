@@ -32,11 +32,11 @@ import org.hibernate.dialect.PostgreSQLEnumJdbcType;
 @NoArgsConstructor
 @Entity
 @Table(name = "hoa_don", indexes = {
-    @Index(name = "idx_hoa_don_ma", columnList = "ma_hoa_don"),
-    @Index(name = "idx_hoa_don_khach_hang", columnList = "khach_hang_id"),
-    @Index(name = "idx_hoa_don_trang_thai", columnList = "trang_thai_don_hang"),
-    @Index(name = "idx_hoa_don_ngay_tao", columnList = "ngay_tao"),
-    @Index(name = "idx_hoa_don_dia_chi", columnList = "dia_chi_giao_hang_id")
+        @Index(name = "idx_hoa_don_ma", columnList = "ma_hoa_don"),
+        @Index(name = "idx_hoa_don_khach_hang", columnList = "khach_hang_id"),
+        @Index(name = "idx_hoa_don_trang_thai", columnList = "trang_thai_don_hang"),
+        @Index(name = "idx_hoa_don_ngay_tao", columnList = "ngay_tao"),
+        @Index(name = "idx_hoa_don_dia_chi", columnList = "dia_chi_giao_hang_id")
 })
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class HoaDon extends BaseAuditableEntity {
@@ -114,4 +114,6 @@ public class HoaDon extends BaseAuditableEntity {
     private List<HoaDonPhieuGiamGia> hoaDonPhieuGiamGias = new ArrayList<>();
 
 
+    @Column(name = "trang_thai_cong_no", length = 50)
+    private String trangThaiCongNo;
 }

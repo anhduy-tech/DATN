@@ -135,8 +135,14 @@ export const mapTabToHoaDonDto = (tab, options = {}) => {
     // Delivery information
     diaChiGiaoHang: deliveryAddressPayload,
     diaChiGiaoHangId: tab.diaChiGiaoHang?.id || null, // Simple scenario fallback
-    nguoiNhanTen: nguoiNhanTen,
-    nguoiNhanSdt: nguoiNhanSdt,
+
+    // DELIVERY TOGGLE FIX: Conditionally include recipient information only when delivery is enabled
+    // When delivery is disabled, completely omit these fields to prevent backend auto-population
+    // This follows REST API best practice: "field not provided" vs "field explicitly set to null"
+    ...(tab.giaohang && {
+      nguoiNhanTen: nguoiNhanTen,
+      nguoiNhanSdt: nguoiNhanSdt,
+    }),
 
     // Financial information
     tongTienHang: tongTienHang,
