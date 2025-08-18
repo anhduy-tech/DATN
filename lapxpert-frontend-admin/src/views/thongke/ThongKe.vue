@@ -494,7 +494,6 @@ const taiDonHangGanDay = async () => {
       }))
   } catch (err) {
     console.error('Lỗi khi tải đơn hàng gần đây:', err)
-    hienThiLoi('Không thể tải đơn hàng gần đây')
     recentOrders.value = []
   } finally {
     loadingRecentOrders.value = false

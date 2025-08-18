@@ -277,7 +277,7 @@ c-320 15 -693 83 -1053 192 -277 84 -693 270 -945 423 -80 48 -95 62 -101 88
               id="taiKhoan1"
               type="email"
               placeholder="Nhập địa chỉ email"
-              class="w-full md:w-[30rem] mb-8"
+              class="w-full  mb-8"
               v-model="taiKhoan"
               :class="{ 'p-invalid': taiKhoan && !isValidEmail(taiKhoan) }"
             />

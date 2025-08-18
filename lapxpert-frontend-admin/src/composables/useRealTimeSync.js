@@ -134,52 +134,65 @@ export function useRealTimeSync(options = {}) {
    */
   function createSerializableState(state) {
     if (!state || typeof state !== 'object') {
-      return state
+      return state;
     }
 
     try {
-      // Use JSON.parse(JSON.stringify()) to create a deep copy and remove non-cloneable properties
-      // This will automatically exclude functions, undefined values, symbols, and circular references
-      return JSON.parse(JSON.stringify(state))
+      // Fast path for non-circular data
+      return JSON.parse(JSON.stringify(state));
     } catch (error) {
-      console.warn('⚠️ Failed to serialize state, using fallback approach:', error)
+      console.warn('⚠️ Failed to serialize state with JSON.stringify, using fallback. Error:', error.message);
 
-      // Fallback: manually create a serializable object
-      const serializable = {}
+      const visited = new Set();
 
-      for (const [key, value] of Object.entries(state)) {
-        try {
-          // Skip functions, symbols, and undefined values
-          if (typeof value === 'function' || typeof value === 'symbol' || value === undefined) {
-            continue
-          }
-
-          // Handle arrays
-          if (Array.isArray(value)) {
-            serializable[key] = value.map(item => createSerializableState(item))
-            continue
-          }
-
-          // Handle objects (but avoid circular references)
-          if (value && typeof value === 'object') {
-            // Simple check for Vue reactive objects
-            if (value.__v_isRef || value.__v_isReactive) {
-              // Extract the raw value from Vue reactive objects
-              serializable[key] = createSerializableState(value.value || value)
-            } else {
-              serializable[key] = createSerializableState(value)
-            }
-            continue
-          }
-
-          // Handle primitive values
-          serializable[key] = value
-        } catch (itemError) {
-          console.warn(`⚠️ Skipping non-serializable property '${key}':`, itemError)
+      const serialize = (val) => {
+        // Primitives and null are returned directly
+        if (val === null || typeof val !== 'object') {
+          return val;
         }
-      }
 
-      return serializable
+        // Handle Vue refs by unwrapping them
+        if (val.__v_isRef) {
+          val = val.value;
+        }
+        
+        // If we have already visited this object, we have a circular reference
+        if (visited.has(val)) {
+          return '[Circular]';
+        }
+
+        // Add the object to the set of visited objects
+        visited.add(val);
+
+        let newObj;
+        if (Array.isArray(val)) {
+          // If it's an array, serialize each item
+          newObj = [];
+          for (let i = 0; i < val.length; i++) {
+            newObj[i] = serialize(val[i]);
+          }
+        } else {
+          // If it's an object, serialize each property
+          newObj = {};
+          for (const key in val) {
+            if (Object.prototype.hasOwnProperty.call(val, key)) {
+                const value = val[key];
+                // Skip functions, symbols, and undefined
+                if (typeof value !== 'function' && typeof value !== 'symbol' && typeof value !== 'undefined') {
+                    newObj[key] = serialize(value);
+                }
+            }
+          }
+        }
+
+        // After serializing the object, remove it from the visited set
+        // so that it can be correctly serialized if it appears in other parts of the state tree.
+        visited.delete(val);
+
+        return newObj;
+      };
+
+      return serialize(state);
     }
   }
 
@@ -344,17 +357,10 @@ export function useRealTimeSync(options = {}) {
         storeKey
       }
 
-      // Validate that the message can be cloned before sending
-      // This helps catch DataCloneError issues early
-      if (data && typeof data === 'object') {
-        try {
-          // Test cloneability by attempting to serialize
-          JSON.stringify(data)
-        } catch (serializeError) {
-          console.warn(`⚠️ Data for ${type} may not be cloneable, attempting to serialize:`, serializeError)
-          message.data = createSerializableState(data)
-        }
-      }
+      // Data for cross-tab communication must be serializable.
+      // We call createSerializableState directly to handle potential circular references
+      // or other non-cloneable data structures safely.
+      message.data = createSerializableState(data);
 
       crossTabChannel.value.postMessage(message)
     } catch (error) {
