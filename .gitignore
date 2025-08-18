@@ -69,4 +69,4 @@ docs/
 
 #pycache
 **/src/main/**/__pycache__/
-**/src/test/**/__pycache__/
+**/src/test/**/__pycache__/.env
